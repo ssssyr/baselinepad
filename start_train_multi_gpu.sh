@@ -21,7 +21,7 @@ CONFIG_FILE="bridge_vision.yaml"
 # Set per-GPU batch size. Total batch size will be (BATCH_SIZE * NUM_GPUS).
 # For 4x A100s, a batch size of 128 per GPU (512 total) is a good starting point.
 # If you encounter Out-Of-Memory errors, reduce this value.
-BATCH_SIZE=128
+BATCH_SIZE=64
 
 # 5. WandB Parameters (Optional, but recommended)
 WANDB_PROJECT="bridge_pretraining_multigpu"
