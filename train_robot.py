@@ -5,37 +5,39 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-A minimal training script for DiT.
+A minimal training script for DiT with horizon-aware weight adaptation.
 """
-import torch
-import torch.nn as nn
-# the first flag below was False when we tested this script but True makes A100 training a lot faster:
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
-import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import Dataset, DataLoader
-from torch.utils.data.distributed import DistributedSampler
-from torchvision.datasets import ImageFolder
-from torchvision import transforms
-import numpy as np
-from collections import OrderedDict
-from PIL import Image
-from copy import deepcopy
+
+import os
+import logging
+import argparse
 from glob import glob
 from time import time
-import argparse
-import logging
-import os
+from copy import deepcopy
+from collections import OrderedDict
+
+import numpy as np
+from PIL import Image
+
+import torch
+import torch.nn as nn
+import torch.distributed as dist
 from accelerate import Accelerator
+from torch.utils.data import DataLoader
+from torchvision.utils import save_image
+
+# Speedups for A100 etc.
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 from config_loader import load_config, save_config
 from models import DiT_models
 from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
-import torch.nn as nn
-import cv2
-from torchvision.utils import save_image
+
+# dataset
+from dataset import RobotDataset
+
 
 #################################################################################
 #                             Training Helper Functions                         #
@@ -43,30 +45,22 @@ from torchvision.utils import save_image
 
 @torch.no_grad()
 def update_ema(ema_model, model, decay=0.9999):
-    """
-    Step the EMA model towards the current model.
-    """
+    """Step the EMA model towards the current model."""
     ema_params = OrderedDict(ema_model.named_parameters())
     model_params = OrderedDict(model.named_parameters())
-
     for name, param in model_params.items():
         name = name.replace("module.", "")
-        # TODO: Consider applying only to params that require_grad to avoid small numerical changes of pos_embed
         ema_params[name].mul_(decay).add_(param.data, alpha=1 - decay)
 
 
 def requires_grad(model, flag=True):
-    """
-    Set requires_grad flag for all parameters in a model.
-    """
+    """Set requires_grad flag for all parameters in a model."""
     for p in model.parameters():
         p.requires_grad = flag
 
 
 def create_logger(logging_dir):
-    """
-    Create a logger that writes to a log file and stdout.
-    """
+    """Create a logger that writes to a log file and stdout."""
     logging.basicConfig(
         level=logging.INFO,
         format='[\033[34m%(asctime)s\033[0m] %(message)s',
@@ -77,44 +71,160 @@ def create_logger(logging_dir):
     return logger
 
 
-# Import dataset classes from the new dataset module
-from dataset import RobotDataset
+#################################################################################
+#                         Horizon/Channel Adaptation Utils                      #
+#################################################################################
+
+def _num_frames_from_channels(cin: int, channels_per_frame: int = 4) -> int:
+    """
+    cin = 4 * (1 + T)
+    return T
+    """
+    assert cin % channels_per_frame == 0, f"Input channels ({cin}) not divisible by {channels_per_frame}"
+    return cin // channels_per_frame - 1
+
+
+def adapt_x_embedder_weight(state_dict, current_state_dict, verbose=True):
+    """
+    Adapt x_embedder.proj.weight across different horizons.
+    Assumes channels are ordered as: [cond(4), frame0(4), frame1(4), ...]
+    """
+    key = "x_embedder.proj.weight"
+    if key not in state_dict or key not in current_state_dict:
+        return
+
+    pre_w = state_dict[key]           # [hidden_size, Cin_pre, k, k]
+    cur_w = current_state_dict[key]   # [hidden_size, Cin_cur, k, k]
+    if pre_w.shape == cur_w.shape:
+        return
+
+    if verbose:
+        print(f"Adapting {key}: {tuple(pre_w.shape)} -> {tuple(cur_w.shape)}")
+
+    hidden, cin_pre, kh, kw = pre_w.shape
+    _, cin_cur, _, _ = cur_w.shape
+
+    assert kh == 2 and kw == 2, "Expected patch_size=2 for latent DiT."
+
+    # channels_per_frame = 4 (SD VAE latent channels)
+    cpf = 4
+    T_pre = _num_frames_from_channels(cin_pre, cpf)
+    T_cur = _num_frames_from_channels(cin_cur, cpf)
+
+    # allocate
+    new_w = torch.zeros_like(cur_w)
+
+    # copy cond block (first 4 channels)
+    take = min(cpf, cin_pre)  # normally 4
+    new_w[:, :take, :, :] = pre_w[:, :take, :, :]
+
+    # copy each future frame by block, if cur needs more than pre, repeat last pre frame-block
+    for i in range(T_cur):
+        src_i = min(i, T_pre - 1) if T_pre > 0 else 0
+        cur_s = cpf + i * cpf
+        cur_e = cur_s + cpf
+        pre_s = cpf + src_i * cpf
+        pre_e = pre_s + cpf
+        # guard bounds
+        pre_s = min(pre_s, cin_pre - cpf)
+        pre_e = pre_s + cpf
+        new_w[:, cur_s:cur_e, :, :] = pre_w[:, pre_s:pre_e, :, :]
+
+    state_dict[key] = new_w
+    if verbose:
+        print(f"✓ {key} adapted by block-copying frames (cpf={cpf}, T_pre={T_pre}, T_cur={T_cur})")
+
+
+def adapt_final_layer_linear(state_dict, current_state_dict, model, verbose=True):
+    """
+    Adapt final_layer.linear.(weight|bias) across different horizons.
+    We treat outputs in blocks of `rows_per_frame = patch_size^2 * in_channels * 2 (=32)`
+    and copy/trim/extend frame-wise.
+    """
+    w_key = "final_layer.linear.weight"
+    b_key = "final_layer.linear.bias"
+    if w_key not in state_dict or w_key not in current_state_dict:
+        return
+
+    pre_w = state_dict[w_key]           # [rows_pre, hidden]
+    cur_w = current_state_dict[w_key]   # [rows_cur, hidden]
+
+    if pre_w.shape == cur_w.shape:
+        return
+
+    if verbose:
+        print(f"Adapting {w_key}: {tuple(pre_w.shape)} -> {tuple(cur_w.shape)}")
+
+    # rows_per_frame = patch_size^2 * (2*in_channels)
+    # For SD latent: in_channels=4, patch_size=2 => 2*2* (2*4) = 32
+    rows_per_frame = (model.patch_size ** 2) * (model.in_channels * 2)
+    assert rows_per_frame > 0 and cur_w.shape[0] % rows_per_frame == 0, \
+        f"rows_cur ({cur_w.shape[0]}) must be multiple of rows_per_frame ({rows_per_frame})"
+    assert pre_w.shape[0] % rows_per_frame == 0, \
+        f"rows_pre ({pre_w.shape[0]}) must be multiple of rows_per_frame ({rows_per_frame})"
+
+    T_pre = pre_w.shape[0] // rows_per_frame
+    T_cur = cur_w.shape[0] // rows_per_frame
+
+    new_w = torch.zeros_like(cur_w)
+    # bias may or may not exist
+    has_bias = b_key in state_dict and b_key in current_state_dict
+    if has_bias:
+        pre_b = state_dict[b_key]
+        cur_b = current_state_dict[b_key]
+        new_b = torch.zeros_like(cur_b)
+
+    # frame-wise copy
+    for i in range(T_cur):
+        src_i = min(i, T_pre - 1) if T_pre > 0 else 0
+        cur_s = i * rows_per_frame
+        cur_e = cur_s + rows_per_frame
+        pre_s = src_i * rows_per_frame
+        pre_e = pre_s + rows_per_frame
+        new_w[cur_s:cur_e, :] = pre_w[pre_s:pre_e, :]
+        if has_bias:
+            new_b[cur_s:cur_e] = pre_b[pre_s:pre_e]
+
+    state_dict[w_key] = new_w
+    if has_bias:
+        state_dict[b_key] = new_b
+
+    if verbose:
+        print(f"✓ {w_key} (and bias) adapted by frame-block copy (rows/frame={rows_per_frame}, T_pre={T_pre}, T_cur={T_cur})")
+
 
 #################################################################################
 #                                  Training Loop                                #
 #################################################################################
 
 def main(args):
-    """
-    Trains a new DiT model.
-    """
+    """Trains a new DiT model."""
     assert torch.cuda.is_available(), "Training currently requires at least one GPU."
 
-    # Setup accelerator:
     accelerator = Accelerator()
     device = accelerator.device
 
     # Setup an experiment folder:
     if accelerator.is_main_process:
-        os.makedirs(args.results_dir, exist_ok=True)  # Make results folder (holds all experiment subfolders)
+        os.makedirs(args.results_dir, exist_ok=True)
         experiment_index = len(glob(f"{args.results_dir}/*"))
-        model_string_name = args.model.replace("/", "-")  # e.g., DiT-XL/2 --> DiT-XL-2 (for naming folders)
+        model_string_name = args.model.replace("/", "-")  # e.g., DiT-XL/2 --> DiT-XL-2
         from datetime import datetime
         uuid = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-        experiment_dir = f"{args.results_dir}/{experiment_index:03d}-{model_string_name}-{uuid}"  # Create an experiment folder
-        checkpoint_dir = f"{experiment_dir}/checkpoints"  # Stores saved model checkpoints
+        experiment_dir = f"{args.results_dir}/{experiment_index:03d}-{model_string_name}-{uuid}"
+        checkpoint_dir = f"{experiment_dir}/checkpoints"
         eval_dir = f"{experiment_dir}/eval"
         vae_path = getattr(args, 'vae_path', "/cephfs/shared/llm/sd-vae-ft-mse")
         vae = AutoencoderKL.from_pretrained(vae_path, local_files_only=True).to(device)
         os.makedirs(checkpoint_dir, exist_ok=True)
         logger = create_logger(experiment_dir)
         logger.info(f"Experiment directory created at {experiment_dir}")
-        
+
         # Save the current configuration for reproducibility
         config_save_path = f"{experiment_dir}/config.yaml"
         save_config(args, config_save_path)
         logger.info(f"Configuration saved to {config_save_path}")
-        
+
         wandb_run = None
         if args.use_wandb:
             try:
@@ -123,120 +233,77 @@ def main(args):
                 raise RuntimeError("Weights & Biases is not installed. Run `pip install wandb` or disable --use-wandb.") from exc
             wandb_project = args.wandb_project or "prediction_with_action"
             run_name = args.wandb_run_name or f"{model_string_name}-{experiment_index:03d}"
-            wandb_run = wandb.init(
-                project=wandb_project,
-                name=run_name,
-                config=vars(args),
-            )
+            wandb_run = wandb.init(project=wandb_project, name=run_name, config=vars(args))
+    else:
+        # place-holders for non-main process
+        experiment_dir = None
+        checkpoint_dir = None
+        eval_dir = None
+        logger = None
+        vae = None
+        wandb_run = None
 
-    # Create model:
+    # Create model with CURRENT args
     assert args.image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
     latent_size = args.image_size // 8
     pred_lens = args.predict_horizon
 
+    model = DiT_models[args.model](
+        input_size=latent_size,
+        num_classes=args.num_classes,
+        args=args,
+    )
+
+    # ==== Load and adapt pretrained weights (rgb_init) if provided ====
     if args.rgb_init is not None:
-        # Initialize model with pretrained weights, adapting layers as needed
-        from copy import deepcopy
-        from models import LanguageEmbedder, FinalLayer
-
-        # Create a temporary model with the pretrained model's settings
-        # This ensures the architecture matches for loading weights
-        args_pretrain = deepcopy(args)
-        args_pretrain.predict_horizon = 3  # The bridge_pre.pt was trained with predict_horizon=3
-        args_pretrain.text_cond = True # The bridge_pre.pt was trained with text conditioning
-        
-        model = DiT_models[args.model](
-            input_size=latent_size,
-            num_classes=args.num_classes,
-            args=args_pretrain,
-        )
-
-        # Load the pretrained checkpoint
         checkpoint = torch.load(args.rgb_init, map_location='cpu')
-        if isinstance(checkpoint, dict) and 'model' in checkpoint:
-            state_dict = checkpoint['model']
-        else:
-            state_dict = checkpoint
-        
-        # Before loading, we need to adapt the state_dict to match current model structure
-        current_state_dict = model.state_dict()
-        
-        # 1. Handle input channel mismatch (x_embedder)
-        if 'x_embedder.proj.weight' in state_dict:
-            pretrained_weight = state_dict['x_embedder.proj.weight']  # [1152, 16, 2, 2]
-            current_weight = current_state_dict['x_embedder.proj.weight']  # [1152, 4, 2, 2]
-            
-            if pretrained_weight.shape != current_weight.shape:
-                print(f"Adapting x_embedder: {pretrained_weight.shape} -> {current_weight.shape}")
-                # Take only the RGB channels (first 3) and repeat to match current channels
-                if pretrained_weight.shape[1] >= 3 and current_weight.shape[1] <= 4:
-                    adapted_weight = pretrained_weight[:, :3, :, :]  # Take RGB channels
-                    if current_weight.shape[1] == 4:
-                        # Add a zero channel for the 4th channel
-                        zero_channel = torch.zeros(pretrained_weight.shape[0], 1, 2, 2)
-                        adapted_weight = torch.cat([adapted_weight, zero_channel], dim=1)
-                    state_dict['x_embedder.proj.weight'] = adapted_weight
-                    print("✓ Adapted x_embedder for channel mismatch")
-        
-        # 2. Handle output dimension mismatch (final_layer)
-        if 'final_layer.linear.weight' in state_dict:
-            pretrained_weight = state_dict['final_layer.linear.weight']  # [96, 1152]
-            current_weight = current_state_dict['final_layer.linear.weight']  # [32, 1152]
-            
-            if pretrained_weight.shape != current_weight.shape:
-                print(f"Adapting final_layer: {pretrained_weight.shape} -> {current_weight.shape}")
-                # Initialize new final layer with pretrained features but correct output size
-                new_weight = torch.randn_like(current_weight) * 0.02
-                new_bias = torch.zeros_like(current_state_dict['final_layer.linear.bias'])
-                state_dict['final_layer.linear.weight'] = new_weight
-                state_dict['final_layer.linear.bias'] = new_bias
-                print("✓ Re-initialized final_layer for output dimension mismatch")
-        
-        # Load the adapted state_dict
-        model.load_state_dict(state_dict, strict=False)
-        print(f"✓ Successfully loaded and adapted pretrained weights from {args.rgb_init}")
+        state_dict = checkpoint['model'] if isinstance(checkpoint, dict) and 'model' in checkpoint else checkpoint
 
-        # Additional adaptations for configuration differences
-        with torch.no_grad():
-            # Handle text conditioning changes if needed
-            if not args.text_cond:
-                # Re-initialize y_embedder for class-only guidance
+        # 1) Adapt input conv for horizon change (channel blocks)
+        adapt_x_embedder_weight(state_dict, model.state_dict(), verbose=accelerator.is_main_process)
+
+        # 2) Adapt final layer outputs per-frame block
+        adapt_final_layer_linear(state_dict, model.state_dict(), model, verbose=accelerator.is_main_process)
+
+        # 3) Load adapted weights (allow missing due to modules like y_embedder difference)
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        if accelerator.is_main_process:
+            print(f"✓ Successfully loaded & adapted pretrained weights from {args.rgb_init}")
+            if missing:
+                print(f"Missing keys after load (ok if due to config changes): {len(missing)}")
+            if unexpected:
+                print(f"Unexpected keys after load: {len(unexpected)}")
+
+        # 4) If text_cond changed, reset y_embedder to a simple class embedder
+        if not args.text_cond:
+            with torch.no_grad():
                 model.y_embedder = nn.Linear(args.num_classes, model.hidden_size, bias=True)
                 nn.init.normal_(model.y_embedder.weight, std=0.02)
                 nn.init.zeros_(model.y_embedder.bias)
+            if accelerator.is_main_process:
                 print("✓ Re-initialized y_embedder for class-only guidance.")
+    # ================================================================
 
-        model = model.to('cpu')
-    else:
-        # train from scratch
-        model = DiT_models[args.model](
-            input_size=latent_size,
-            num_classes=args.num_classes,
-            args=args,
-        )
-    
-    # Note that parameter initialization is done within the DiT constructor
     model = model.to(device)
 
     if not args.without_ema:
-        ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
+        ema = deepcopy(model).to(device)  # EMA of the model
         requires_grad(ema, False)
     diffusion = create_diffusion(timestep_respacing="")  # default: 1000 steps, linear noise schedule
     eval_diffusion = create_diffusion(str(250))
-    # vae = AutoencoderKL.from_pretrained("/home/gyj/llm/sd-vae-ft-mse").to(device)
+
     if accelerator.is_main_process:
         logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-    # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
+    # Optimizer
     lr = float(getattr(args, 'learning_rate', 1e-4))
     weight_decay = float(getattr(args, 'weight_decay', 0.0))
     beta1 = float(getattr(args, 'adam_beta1', 0.9))
     beta2 = float(getattr(args, 'adam_beta2', 0.999))
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(beta1, beta2))
 
-    # Setup data:
+    # Data
     dataset = RobotDataset(args.feature_path, args)
-
     loader = DataLoader(
         dataset,
         batch_size=int(args.global_batch_size // accelerator.num_processes),
@@ -245,99 +312,119 @@ def main(args):
         pin_memory=True,
         drop_last=True
     )
+
     if accelerator.is_main_process:
         logger.info(f"Global batch size {args.global_batch_size:,} num_processes ({accelerator.num_processes})")
         logger.info(f"Dataset contains {len(dataset):,} images ({args.feature_path})")
 
-    # Prepare models for training:
+    # Prepare for distributed
     if not args.without_ema:
-        update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
-        ema.eval()  # EMA model should always be in eval mode
-    model.train()  # important! This enables embedding dropout for classifier-free guidance
+        update_ema(ema, model, decay=0)  # sync init
+        ema.eval()
+    model.train()  # important! enables embedding dropout for classifier-free guidance
     model, opt, loader = accelerator.prepare(model, opt, loader)
 
-    # Variables for monitoring/logging purposes:
+    # Monitor vars
     train_steps = 0
     log_steps = 0
-    running_loss = 0
-    running_loss_a = 0
-    running_loss_d = 0
+    running_loss = 0.0
+    running_loss_a = 0.0
+    running_loss_d = 0.0
     start_time = time()
     eval_batch = None
     best_action_loss = 1e8
-    
+
     if accelerator.is_main_process:
         logger.info(f"Training for {args.epochs} epochs...")
     for epoch in range(args.epochs):
         if accelerator.is_main_process:
             logger.info(f"Beginning epoch {epoch}...")
         if not args.dynamics:
-            raise NotImplementedError
+            raise NotImplementedError("Set --dynamics for dynamics modeling.")
         for x_cond, x, depth_cond, depth, action_cond, action, y in loader:
-
+            # Shapes:
+            # x_cond: (B,1,4,H,W) -> (B,4,H,W)
+            # x:      (B,1,4*pred_lens,H,W) -> (B,4*pred_lens,H,W)
             x_cond = x_cond.squeeze(dim=1).to(device)
-            x = x.squeeze(dim=1).to(device) # (B, 1, 4, 32,32)
-            y = y.squeeze(dim=1).to(device) # text: (B,512) class:(B)
+            x = x.squeeze(dim=1).to(device)
+            y = y.squeeze(dim=1).to(device)
             t = torch.randint(0, diffusion.num_timesteps, (x.shape[0],), device=device)
 
             if args.use_depth:
                 depth_cond = depth_cond.to(device)
                 depth = depth.to(device)
-            
-            if args.action_steps>0:
-                action = action.to(device)
-            if args.action_steps>0 and args.action_condition:
-                action_cond = action_cond.to(device)
+            else:
+                depth_cond = None
+                depth = None
 
-            model_kwargs = dict(y=y,x_cond=x_cond,action=action,depth_cond=depth_cond,depth=depth,action_cond=action_cond)
-            if eval_batch == None:
+            if args.action_steps > 0:
+                action = action.to(device)
+            else:
+                action = None
+
+            if args.action_steps > 0 and args.action_condition:
+                action_cond = action_cond.to(device)
+            else:
+                action_cond = None
+
+            model_kwargs = dict(
+                y=y,
+                x_cond=x_cond,
+                action=action,
+                depth_cond=depth_cond,
+                depth=depth,
+                action_cond=action_cond
+            )
+
+            if eval_batch is None:
                 eval_batch = {
                     'input_img': x_cond,
                     'future_img': x,
-                    'input_depth' : depth_cond,
-                    'future_depth' : depth,
-                    'rela_action' : action,
+                    'input_depth': depth_cond,
+                    'future_depth': depth,
+                    'rela_action': action,
                     'action_cond': action_cond,
                     'y': y,
                 }
 
             loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
             loss = loss_dict["loss"].mean()
-            if args.action_steps>0:
-                a_coffi = 1.0 if train_steps>args.action_loss_start else 0.0
-                loss += loss_dict["loss_a"].mean()*args.action_loss_lambda*a_coffi
-            if args.use_depth:
-                loss += loss_dict["loss_depth"].mean()
+            if args.action_steps > 0 and "loss_a" in loss_dict:
+                a_coffi = 1.0 if train_steps > args.action_loss_start else 0.0
+                loss = loss + loss_dict["loss_a"].mean() * args.action_loss_lambda * a_coffi
+            if args.use_depth and "loss_depth" in loss_dict:
+                loss = loss + loss_dict["loss_depth"].mean()
+
             opt.zero_grad()
-            accelerator.backward(loss)            
+            accelerator.backward(loss)
             opt.step()
             if not args.without_ema:
                 update_ema(ema, model)
 
-            # Log loss values:
+            # logging stats
             running_loss += loss_dict["loss"].mean().item()
-            if args.action_steps>0:
-                running_loss_a += loss_dict["loss_a"].mean().item()*args.action_loss_lambda*a_coffi
-            if args.use_depth:
+            if args.action_steps > 0 and "loss_a" in loss_dict:
+                running_loss_a += loss_dict["loss_a"].mean().item() * args.action_loss_lambda * (1.0 if train_steps > args.action_loss_start else 0.0)
+            if args.use_depth and "loss_depth" in loss_dict:
                 running_loss_d += loss_dict["loss_depth"].mean().item()
+
             log_steps += 1
             train_steps += 1
+
             if train_steps % args.log_every == 0:
-                # Measure training speed:
                 torch.cuda.synchronize()
                 end_time = time()
                 steps_per_sec = log_steps / (end_time - start_time)
-                # Reduce loss history over all processes:
-                avg_loss = torch.tensor(running_loss / log_steps, device=device)
-                # avg_loss = avg_loss.item() / accelerator.num_processes # why divide?
-                avg_loss = avg_loss.item()
-                avg_loss_a = torch.tensor(running_loss_a / log_steps, device=device)
-                avg_loss_a = avg_loss_a.item()
-                avg_loss_d = torch.tensor(running_loss_d / log_steps, device=device)
-                avg_loss_d = avg_loss_d.item()
+                avg_loss = (running_loss / log_steps)
+                avg_loss_a = (running_loss_a / log_steps) if log_steps > 0 else 0.0
+                avg_loss_d = (running_loss_d / log_steps) if log_steps > 0 else 0.0
+
                 if accelerator.is_main_process:
-                    logger.info(f"(step={train_steps:07d}) Train Loss image: {avg_loss:.6f}, Train Loss action:{avg_loss_a:.6f}, Train Loss depth:{avg_loss_d:.6f}, Train Steps/Sec: {steps_per_sec:.2f}")
+                    logger.info(f"(step={train_steps:07d}) Train Loss image: {avg_loss:.6f}, "
+                                f"Train Loss action:{avg_loss_a:.6f}, Train Loss depth:{avg_loss_d:.6f}, "
+                                f"Train Steps/Sec: {steps_per_sec:.2f}")
                     if args.use_wandb:
+                        import wandb
                         log_payload = {
                             "train/loss_image": avg_loss,
                             "train/steps_per_sec": steps_per_sec,
@@ -347,12 +434,14 @@ def main(args):
                         if args.use_depth:
                             log_payload["train/loss_depth"] = avg_loss_d
                         wandb.log(log_payload, step=train_steps)
-                # Reset monitoring variables:
-                running_loss, running_loss_a, running_loss_d = 0, 0, 0
+
+                running_loss = 0.0
+                running_loss_a = 0.0
+                running_loss_d = 0.0
                 log_steps = 0
                 start_time = time()
 
-            # evaluate dit
+            # evaluate
             if train_steps > 0 and train_steps % args.eval_every == 0:
                 if accelerator.is_main_process:
                     logger.info("start evaluating model")
@@ -362,32 +451,44 @@ def main(args):
                     input_depth = eval_batch['input_depth']
                     target_depth = eval_batch['future_depth']
                     rela_action = eval_batch['rela_action']
-                    action_cond = eval_batch['action_cond']
-                    y = eval_batch['y']
-                    #target_action = eval_batch['a']
+                    action_cond_b = eval_batch['action_cond']
+                    y_b = eval_batch['y']
+
                     z = torch.randn(size=target_img.shape, device=device)
-                    noise_depth = torch.randn(size=target_depth.shape, device=device)
-                    noise_action = torch.randn(size=rela_action.shape, device=device)
-                    #noise_action = torch.randn(input_img.shape[0], 4, args.action_lens, device=device)
-                    eval_model_kwargs = dict(y=y, x_cond=input_img,noised_action=noise_action,depth_cond=input_depth,noised_depth=noise_depth,action_cond=action_cond)
+                    noise_depth = torch.randn(size=target_depth.shape, device=device) if args.use_depth else None
+                    noise_action = torch.randn(size=rela_action.shape, device=device) if args.action_steps > 0 else None
+
+                    eval_model_kwargs = dict(
+                        y=y_b,
+                        x_cond=input_img,
+                        noised_action=noise_action,
+                        depth_cond=input_depth,
+                        noised_depth=noise_depth,
+                        action_cond=action_cond_b
+                    )
                     samples = eval_diffusion.p_sample_loop(
                         model, z.shape, z, clip_denoised=False, model_kwargs=eval_model_kwargs, progress=True,
                         device=device
                     )
-                    if args.use_depth or args.action_steps>0:
-                        img_samples, action_samples, depth_samples =samples
+                    if args.use_depth or args.action_steps > 0:
+                        img_samples, action_samples, depth_samples = samples
                     else:
                         img_samples = samples
+                        action_samples = None
+                        depth_samples = None
+
                     img_mse_error = torch.nn.functional.mse_loss(target_img, img_samples)
                     img_mse_value = img_mse_error.detach().item()
                     logger.info(f"(step={train_steps:07d}) Train img mse: {img_mse_value:.6f}")
-                    if args.use_depth:
+
+                    if args.use_depth and depth_samples is not None:
                         depth_mse_error = torch.nn.functional.mse_loss(target_depth, depth_samples)
                         depth_mse_value = depth_mse_error.detach().item()
                         logger.info(f"(step={train_steps:07d}) Train depth mse: {depth_mse_value:.6f}")
                     else:
                         depth_mse_value = None
-                    if args.action_steps>0:
+
+                    if args.action_steps > 0 and action_samples is not None:
                         action_mse_error = torch.nn.functional.mse_loss(rela_action, action_samples)
                         action_mse_value = action_mse_error.detach().item()
                         logger.info(f"(step={train_steps:07d}) Train action mse: {action_mse_value:.6f}")
@@ -401,7 +502,9 @@ def main(args):
                             logger.info(f"Saved checkpoint to {checkpoint_path}")
                     else:
                         action_mse_value = None
+
                     if args.use_wandb:
+                        import wandb
                         eval_log = {"eval/loss_image": img_mse_value}
                         if depth_mse_value is not None:
                             eval_log["eval/loss_depth"] = depth_mse_value
@@ -409,42 +512,37 @@ def main(args):
                             eval_log["eval/loss_action"] = action_mse_value
                             eval_log["eval/best_action_loss"] = best_action_loss
                         wandb.log(eval_log, step=train_steps)
-                    #img_samples = img_samples.reshape((N,pred_lens,-1,img_samples.shape[2],img_samples.shape[3]))
-                    #depth_samples = depth_samples.reshape((N, pred_lens, -1, depth_samples.shape[2], depth_samples.shape[3]))
+
+                    # save qualitative imgs
                     img_save_path = os.path.join(eval_dir, 'step_' + str(train_steps))
                     os.makedirs(img_save_path, exist_ok=True)
-                    if args.use_depth:
-                        depth_samples = depth_samples.cpu().detach().numpy()
-                        input_depth = input_depth.cpu().detach().numpy()
-                        target_depth = target_depth.cpu().detach().numpy()
+                    if args.use_depth and depth_samples is not None:
+                        depth_samples_np = depth_samples.cpu().detach().numpy()
+                        input_depth_np = input_depth.cpu().detach().numpy()
+                        target_depth_np = target_depth.cpu().detach().numpy()
                     for i in range(img_samples.shape[0]):
                         input_img_save = vae.decode(input_img[i:i + 1] / 0.18215).sample
-                        save_image(input_img_save, os.path.join(img_save_path, str(i) + "_input.png"), nrow=4,
-                                   normalize=True,
-                                   value_range=(-1, 1))
-                        if args.use_depth:
-                            image = Image.fromarray((input_depth[i] * 100)[0].astype(np.uint8))
+                        save_image(input_img_save, os.path.join(img_save_path, str(i) + "_input.png"),
+                                   nrow=4, normalize=True, value_range=(-1, 1))
+                        if args.use_depth and depth_samples is not None:
+                            image = Image.fromarray((input_depth_np[i] * 100)[0].astype(np.uint8))
                             image.save(os.path.join(img_save_path, str(i) + "_input_depth.png"))
                         for j in range(pred_lens):
-                            target_img_save = vae.decode(target_img[i:i+1,4*j:4*(j+1)] / 0.18215).sample
-                            samples_img_save = vae.decode(img_samples[i:i+1,4*j:4*(j+1)] / 0.18215).sample
+                            target_img_save = vae.decode(target_img[i:i+1, 4*j:4*(j+1)] / 0.18215).sample
+                            samples_img_save = vae.decode(img_samples[i:i+1, 4*j:4*(j+1)] / 0.18215).sample
+                            save_image(target_img_save, os.path.join(img_save_path, f"{i}_{j}_target.png"),
+                                       nrow=4, normalize=True, value_range=(-1, 1))
+                            save_image(samples_img_save, os.path.join(img_save_path, f"{i}_{j}_pred.png"),
+                                       nrow=4, normalize=True, value_range=(-1, 1))
+                            if args.use_depth and depth_samples is not None:
+                                image = Image.fromarray((depth_samples_np[i, j:j+1] * 100)[0].astype(np.uint8))
+                                image.save(os.path.join(img_save_path, f"{i}_{j}_pred_depth.png"))
+                                image = Image.fromarray((target_depth_np[i, j:j+1] * 100)[0].astype(np.uint8))
+                                image.save(os.path.join(img_save_path, f"{i}_{j}_target_depth.png"))
 
-                            save_image(target_img_save, os.path.join(img_save_path, str(i) + '_' + str(j) + "_target.png"), nrow=4,
-                                       normalize=True,
-                                       value_range=(-1, 1))
-                            save_image(samples_img_save, os.path.join(img_save_path, str(i) + '_' + str(j) + "_pred.png"), nrow=4,
-                                       normalize=True,
-                                       value_range=(-1, 1))
-                            #print('depth_samples_shape:',depth_samples.shape)
+                    model.train()
 
-                            if args.use_depth:
-                                image = Image.fromarray((depth_samples[i,j:j+1]*100)[0].astype(np.uint8))
-                                image.save(os.path.join(img_save_path, str(i) + '_' + str(j) + "_pred_depth.png"))
-                                image = Image.fromarray((target_depth[i,j:j+1] * 100)[0].astype(np.uint8))
-                                image.save(os.path.join(img_save_path, str(i) + '_' + str(j) + "_target_depth.png"))
-                model.train()
-
-            # Save DiT checkpoint:
+            # Save checkpoint
             if train_steps % args.ckpt_every == 0:
                 if accelerator.is_main_process:
                     checkpoint = {
@@ -455,87 +553,87 @@ def main(args):
                     torch.save(checkpoint, checkpoint_path)
                     logger.info(f"Saved checkpoint to {checkpoint_path}")
 
-    model.eval()  # important! This disables randomized embedding dropout
-    # do any sampling/FID calculation/etc. with ema (or model) in eval mode ...
+    model.eval()  # disable randomized embedding dropout
 
     if accelerator.is_main_process:
         logger.info("Done!")
         if args.use_wandb:
+            import wandb
             wandb.finish()
 
 
 if __name__ == "__main__":
     # Create argument parser with config file support
     parser = argparse.ArgumentParser(description="Train DiT model with config file support")
-    
-    # Config file argument
-    parser.add_argument("--config", type=str, default="default.yaml", 
-                       help="Path to YAML config file (default: configs/default.yaml)")
-    
-    # All other arguments (these can override config file values)
-    parser.add_argument("--feature-path", type=str, help="Path to training data features")
-    parser.add_argument("--results-dir", type=str, help="Directory to save checkpoints and logs")
-    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), help="Model architecture")
-    parser.add_argument("--image-size", type=int, choices=[256, 512], help="Image size (must be divisible by 8)")
-    parser.add_argument("--num-classes", type=int, help="Number of classes for classifier-free guidance")
-    parser.add_argument("--epochs", type=int, help="Total training epochs")
-    parser.add_argument("--global-batch-size", type=int, help="Total batch size across all GPUs")
-    parser.add_argument("--global-seed", type=int, help="Random seed for reproducibility")
-    parser.add_argument("--vae", type=str, choices=["ema", "mse"], help="VAE model type")
-    parser.add_argument("--vae-path", type=str, help="Path to VAE model directory")
-    parser.add_argument("--learning-rate", type=float, help="Learning rate for AdamW optimizer")
-    parser.add_argument("--weight-decay", type=float, help="Weight decay for AdamW optimizer")
-    parser.add_argument("--adam-beta1", type=float, help="AdamW beta1 parameter")
-    parser.add_argument("--adam-beta2", type=float, help="AdamW beta2 parameter")
-    parser.add_argument("--num-workers", type=int, help="Number of data loader workers")
-    parser.add_argument("--log-every", type=int, help="Log training status every N steps")
-    parser.add_argument("--ckpt-every", type=int, help="Save checkpoint every N steps")
-    parser.add_argument("--eval-every", type=int, help="Evaluate model every N steps")
-    parser.add_argument("--ckpt-wrapper", action="store_true", help="Wrapper for saving memory")
-    parser.add_argument("--without-ema", action="store_true", help="Disable Exponential Moving Average")
 
-    # Initialization
-    parser.add_argument("--dit-init", type=str, help="Path to pretrained DiT weights")
-    parser.add_argument("--rgb-init", type=str, help="Path to pretrained model for RGB components")
+    # Config file arg
+    parser.add_argument("--config", type=str, default="default.yaml",
+                        help="Path to YAML config file (default: configs/default.yaml)")
+
+    # Main args (can be overridden by config)
+    parser.add_argument("--feature-path", type=str)
+    parser.add_argument("--results-dir", type=str)
+    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()))
+    parser.add_argument("--image-size", type=int, choices=[256, 512])
+    parser.add_argument("--num-classes", type=int)
+    parser.add_argument("--epochs", type=int)
+    parser.add_argument("--global-batch-size", type=int)
+    parser.add_argument("--global-seed", type=int)
+    parser.add_argument("--vae", type=str, choices=["ema", "mse"])
+    parser.add_argument("--vae-path", type=str)
+    parser.add_argument("--learning-rate", type=float)
+    parser.add_argument("--weight-decay", type=float)
+    parser.add_argument("--adam-beta1", type=float)
+    parser.add_argument("--adam-beta2", type=float)
+    parser.add_argument("--num-workers", type=int)
+    parser.add_argument("--log-every", type=int)
+    parser.add_argument("--ckpt-every", type=int)
+    parser.add_argument("--eval-every", type=int)
+    parser.add_argument("--ckpt-wrapper", action="store_true")
+    parser.add_argument("--without-ema", action="store_true")
+
+    # Init
+    parser.add_argument("--dit-init", type=str)
+    parser.add_argument("--rgb-init", type=str)
 
     # Model components
-    parser.add_argument("--attn-mask", action="store_true", help="Use attention mask")
-    parser.add_argument("--predict-horizon", type=int, help="Number of future frames to predict")
-    parser.add_argument("--skip-step", type=int, help="Steps to skip between frames")
+    parser.add_argument("--attn-mask", action="store_true")
+    parser.add_argument("--predict-horizon", type=int)
+    parser.add_argument("--skip-step", type=int)
 
     # Text conditioning
-    parser.add_argument("--dynamics", action="store_true", help="Enable dynamics modeling")
-    parser.add_argument("--text-cond", action="store_true", help="Enable text conditioning")
-    parser.add_argument("--clip-path", type=str, help="Path to CLIP model")
-    parser.add_argument("--text-emb-size", type=int, help="Dimension of text embeddings")
-    
-    # Depth conditioning
-    parser.add_argument("--use-depth", action="store_true", help="Enable depth conditioning")
-    parser.add_argument("--d-hidden-size", type=int, help="Hidden size for depth encoder")
-    parser.add_argument("--d-patch-size", type=int, help="Patch size for depth encoder")
-    parser.add_argument("--depth-filter", action="store_true", help="Apply filter to depth images")
+    parser.add_argument("--dynamics", action="store_true")
+    parser.add_argument("--text-cond", action="store_true")
+    parser.add_argument("--clip-path", type=str)
+    parser.add_argument("--text-emb-size", type=int)
 
-    # Action conditioning
-    parser.add_argument("--learnable-action-pos", action="store_true", help="Use learnable positional embeddings for actions")
-    parser.add_argument("--action-steps", type=int, help="Number of action steps to predict/condition on")
-    parser.add_argument("--action-dim", type=int, help="Dimension of the action space")
-    parser.add_argument("--action-scale", type=float, help="Scaling factor for actions")
-    parser.add_argument("--absolute-action", action="store_true", help="Use absolute actions instead of relative")
-    parser.add_argument("--action-condition", action="store_true", help="Condition on the current action/pose")
+    # Depth
+    parser.add_argument("--use-depth", action="store_true")
+    parser.add_argument("--d-hidden-size", type=int)
+    parser.add_argument("--d-patch-size", type=int)
+    parser.add_argument("--depth-filter", action="store_true")
 
-    # Loss configuration
-    parser.add_argument("--action-loss-lambda", type=float, help="Weight for the action prediction loss")
-    parser.add_argument("--action-loss-start", type=int, help="Step to start applying action loss")
-    
-    # Wandb logging
-    parser.add_argument("--use-wandb", action="store_true", help="Enable Weights & Biases logging")
-    parser.add_argument("--wandb-project", type=str, help="Wandb project name")
-    parser.add_argument("--wandb-run-name", type=str, help="Wandb run name")
+    # Action
+    parser.add_argument("--learnable-action-pos", action="store_true")
+    parser.add_argument("--action-steps", type=int)
+    parser.add_argument("--action-dim", type=int)
+    parser.add_argument("--action-scale", type=float)
+    parser.add_argument("--absolute-action", action="store_true")
+    parser.add_argument("--action-condition", action="store_true")
 
-    # Parse command line arguments
+    # Loss
+    parser.add_argument("--action-loss-lambda", type=float)
+    parser.add_argument("--action-loss-start", type=int)
+
+    # Wandb
+    parser.add_argument("--use-wandb", action="store_true")
+    parser.add_argument("--wandb-project", type=str)
+    parser.add_argument("--wandb-run-name", type=str)
+
+    # Parse CLI
     cli_args = parser.parse_args()
-    
-    # Load configuration from YAML file and merge with CLI args
+
+    # Load YAML config and merge with CLI
     try:
         args = load_config(cli_args.config, "configs", cli_args)
         print(f"✓ Loaded configuration from: configs/{cli_args.config}")
@@ -547,12 +645,12 @@ if __name__ == "__main__":
         print(f"✗ Error loading config: {e}")
         print("Falling back to command line arguments only...")
         args = cli_args
-    
+
     # Convert dashes to underscores for compatibility
     for attr_name in dir(args):
         if '-' in attr_name and not attr_name.startswith('_'):
             new_name = attr_name.replace('-', '_')
             if not hasattr(args, new_name):
                 setattr(args, new_name, getattr(args, attr_name))
-    
+
     main(args)
