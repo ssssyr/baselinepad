@@ -205,23 +205,6 @@ def main(args):
                 nn.init.normal_(model.y_embedder.weight, std=0.02)
                 nn.init.zeros_(model.y_embedder.bias)
                 print("✓ Re-initialized y_embedder for class-only guidance.")
-            
-            # Copy weights from the old final layer to the new one
-            # This is a simple way to initialize, assuming the first part of the layer is similar
-            num_blocks_to_copy = min(args.predict_horizon, args_pretrain.predict_horizon)
-            d = model.patch_size ** 2 * c * 2
-            new_final_layer.linear.weight[:num_blocks_to_copy*d, :].copy_(model.final_layer.linear.weight[:num_blocks_to_copy*d, :])
-            new_final_layer.linear.bias[:num_blocks_to_copy*d].copy_(model.final_layer.linear.bias[:num_blocks_to_copy*d])
-            
-            model.final_layer = new_final_layer
-            print(f"✓ Adapted final_layer for predict_horizon={args.predict_horizon}")
-
-            # 2. Adapt text embedder if text_cond is disabled in the new config
-            if not args.text_cond:
-                model.y_embedder = nn.Linear(model.hidden_size, model.hidden_size)
-                nn.init.constant_(model.y_embedder.weight, 0)
-                nn.init.constant_(model.y_embedder.bias, 0)
-                print("✓ Re-initialized y_embedder for class-only guidance.")
 
         model = model.to('cpu')
     else:
