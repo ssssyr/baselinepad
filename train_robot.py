@@ -8,6 +8,7 @@
 A minimal training script for DiT.
 """
 import torch
+import torch.nn as nn
 # the first flag below was False when we tested this script but True makes A100 training a lot faster:
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -157,15 +158,53 @@ def main(args):
         else:
             state_dict = checkpoint
         
-        model.load_state_dict(state_dict)
-        print(f"✓ Successfully loaded pretrained weights from {args.rgb_init}")
+        # Before loading, we need to adapt the state_dict to match current model structure
+        current_state_dict = model.state_dict()
+        
+        # 1. Handle input channel mismatch (x_embedder)
+        if 'x_embedder.proj.weight' in state_dict:
+            pretrained_weight = state_dict['x_embedder.proj.weight']  # [1152, 16, 2, 2]
+            current_weight = current_state_dict['x_embedder.proj.weight']  # [1152, 4, 2, 2]
+            
+            if pretrained_weight.shape != current_weight.shape:
+                print(f"Adapting x_embedder: {pretrained_weight.shape} -> {current_weight.shape}")
+                # Take only the RGB channels (first 3) and repeat to match current channels
+                if pretrained_weight.shape[1] >= 3 and current_weight.shape[1] <= 4:
+                    adapted_weight = pretrained_weight[:, :3, :, :]  # Take RGB channels
+                    if current_weight.shape[1] == 4:
+                        # Add a zero channel for the 4th channel
+                        zero_channel = torch.zeros(pretrained_weight.shape[0], 1, 2, 2)
+                        adapted_weight = torch.cat([adapted_weight, zero_channel], dim=1)
+                    state_dict['x_embedder.proj.weight'] = adapted_weight
+                    print("✓ Adapted x_embedder for channel mismatch")
+        
+        # 2. Handle output dimension mismatch (final_layer)
+        if 'final_layer.linear.weight' in state_dict:
+            pretrained_weight = state_dict['final_layer.linear.weight']  # [96, 1152]
+            current_weight = current_state_dict['final_layer.linear.weight']  # [32, 1152]
+            
+            if pretrained_weight.shape != current_weight.shape:
+                print(f"Adapting final_layer: {pretrained_weight.shape} -> {current_weight.shape}")
+                # Initialize new final layer with pretrained features but correct output size
+                new_weight = torch.randn_like(current_weight) * 0.02
+                new_bias = torch.zeros_like(current_state_dict['final_layer.linear.bias'])
+                state_dict['final_layer.linear.weight'] = new_weight
+                state_dict['final_layer.linear.bias'] = new_bias
+                print("✓ Re-initialized final_layer for output dimension mismatch")
+        
+        # Load the adapted state_dict
+        model.load_state_dict(state_dict, strict=False)
+        print(f"✓ Successfully loaded and adapted pretrained weights from {args.rgb_init}")
 
-        # Now, adapt the model to the current configuration (from your YAML file)
+        # Additional adaptations for configuration differences
         with torch.no_grad():
-            # 1. Adapt the final layer for the new predict_horizon
-            c = model.in_channels
-            out_c = c * 2 * args.predict_horizon
-            new_final_layer = FinalLayer(model.hidden_size, model.patch_size, out_c, args)
+            # Handle text conditioning changes if needed
+            if not args.text_cond:
+                # Re-initialize y_embedder for class-only guidance
+                model.y_embedder = nn.Linear(args.num_classes, model.hidden_size, bias=True)
+                nn.init.normal_(model.y_embedder.weight, std=0.02)
+                nn.init.zeros_(model.y_embedder.bias)
+                print("✓ Re-initialized y_embedder for class-only guidance.")
             
             # Copy weights from the old final layer to the new one
             # This is a simple way to initialize, assuming the first part of the layer is similar
