@@ -134,32 +134,56 @@ def main(args):
     pred_lens = args.predict_horizon
 
     if args.rgb_init is not None:
+        # Initialize model with pretrained weights, adapting layers as needed
+        from copy import deepcopy
+        from models import LanguageEmbedder, FinalLayer
+
+        # Create a temporary model with the pretrained model's settings
+        # This ensures the architecture matches for loading weights
+        args_pretrain = deepcopy(args)
+        args_pretrain.predict_horizon = 3  # The bridge_pre.pt was trained with predict_horizon=3
+        args_pretrain.text_cond = True # The bridge_pre.pt was trained with text conditioning
+        
         model = DiT_models[args.model](
             input_size=latent_size,
             num_classes=args.num_classes,
-            args=args,
+            args=args_pretrain,
         )
-        # load model from args.rgb_init
+
+        # Load the pretrained checkpoint
         checkpoint = torch.load(args.rgb_init, map_location='cpu')
-        # Handle different checkpoint formats
-        if isinstance(checkpoint, dict):
-            if "model" in checkpoint:
-                pretrained_dict = checkpoint["model"]
-            elif "state_dict" in checkpoint:
-                pretrained_dict = checkpoint["state_dict"]
-            else:
-                pretrained_dict = checkpoint
+        if isinstance(checkpoint, dict) and 'model' in checkpoint:
+            state_dict = checkpoint['model']
         else:
-            pretrained_dict = checkpoint
-        model_dict = model.state_dict()
-        # 1. filter out unnecessary keys
-        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
-        print("load",len(pretrained_dict.keys()))
-        print("model", len(model_dict.keys()))
-        # 2. overwrite entries in the existing state dict
-        model_dict.update(pretrained_dict) 
-        # 3. load the new state dict
-        model.load_state_dict(model_dict)
+            state_dict = checkpoint
+        
+        model.load_state_dict(state_dict)
+        print(f"✓ Successfully loaded pretrained weights from {args.rgb_init}")
+
+        # Now, adapt the model to the current configuration (from your YAML file)
+        with torch.no_grad():
+            # 1. Adapt the final layer for the new predict_horizon
+            c = model.in_channels
+            out_c = c * 2 * args.predict_horizon
+            new_final_layer = FinalLayer(model.hidden_size, model.patch_size, out_c, args)
+            
+            # Copy weights from the old final layer to the new one
+            # This is a simple way to initialize, assuming the first part of the layer is similar
+            num_blocks_to_copy = min(args.predict_horizon, args_pretrain.predict_horizon)
+            d = model.patch_size ** 2 * c * 2
+            new_final_layer.linear.weight[:num_blocks_to_copy*d, :].copy_(model.final_layer.linear.weight[:num_blocks_to_copy*d, :])
+            new_final_layer.linear.bias[:num_blocks_to_copy*d].copy_(model.final_layer.linear.bias[:num_blocks_to_copy*d])
+            
+            model.final_layer = new_final_layer
+            print(f"✓ Adapted final_layer for predict_horizon={args.predict_horizon}")
+
+            # 2. Adapt text embedder if text_cond is disabled in the new config
+            if not args.text_cond:
+                model.y_embedder = nn.Linear(model.hidden_size, model.hidden_size)
+                nn.init.constant_(model.y_embedder.weight, 0)
+                nn.init.constant_(model.y_embedder.bias, 0)
+                print("✓ Re-initialized y_embedder for class-only guidance.")
+
         model = model.to('cpu')
     else:
         # train from scratch
