@@ -280,8 +280,11 @@ class RobotDataset(Dataset):
                 step_infos_f = json.load(f)
             for step in step_infos_f:
                 step["wrist_1"] = os.path.join(dir, step["wrist_1"])
-                step["depth_1"] = os.path.join(dir, step["depth_1"])
-                step["ins_emb_path"] = os.path.join(dir, step["ins_emb_path"])
+                # Only process depth if use_depth is enabled and depth_1 exists in the data
+                if args.use_depth and "depth_1" in step:
+                    step["depth_1"] = os.path.join(dir, step["depth_1"])
+                if "ins_emb_path" in step:
+                    step["ins_emb_path"] = os.path.join(dir, step["ins_emb_path"])
                 step_info.append(step)
             step_infos += [step for step in step_info]
             # step_infos += [step for step in step_info if int(step["episode"])%50<20]
@@ -298,8 +301,10 @@ class RobotDataset(Dataset):
             if cond_traj_idx == pred_traj_idx:
                 # current frame
                 self.cond_rgb_file.append(step_infos[idx]["wrist_1"])
-                self.cond_depth_file.append(step_infos[idx]["depth_1"]) if args.use_depth else None
-                self.cond_action.append(step_infos[idx]['state']) if args.action_steps>0 else None
+                if args.use_depth and "depth_1" in step_infos[idx]:
+                    self.cond_depth_file.append(step_infos[idx]["depth_1"])
+                if args.action_steps>0:
+                    self.cond_action.append(step_infos[idx]['state'])
                 features = []
                 depths = []
                 actions = []
@@ -309,17 +314,24 @@ class RobotDataset(Dataset):
                     pre_idx = idx + i*skip_step
                     if pre_idx>=len(step_infos) or step_infos[pre_idx]["episode"] != cond_traj_idx:
                         features.append(features[-1])
-                        depths.append(depths[-1]) if args.use_depth else None
-                        actions.append(actions[-1]) if args.action_steps>0 else None
+                        if args.use_depth and len(depths) > 0:
+                            depths.append(depths[-1])
+                        if args.action_steps>0 and len(actions) > 0:
+                            actions.append(actions[-1])
                     else:
                         features.append(step_infos[pre_idx]["wrist_1"])
-                        depths.append(step_infos[pre_idx]["depth_1"]) if args.use_depth else None
-                        actions.append(step_infos[pre_idx]['state']) if args.action_steps>0 else None
+                        if args.use_depth and "depth_1" in step_infos[pre_idx]:
+                            depths.append(step_infos[pre_idx]["depth_1"])
+                        if args.action_steps>0:
+                            actions.append(step_infos[pre_idx]['state'])
 
                 self.rgb_file.append(features) # [[x,x,x],[x,x,x],[x,x,x]]
                 self.depth_file.append(depths)
                 self.action.append(actions)
-                self.ins_emb_file.append(step_infos[idx]["ins_emb_path"])
+                if "ins_emb_path" in step_infos[idx]:
+                    self.ins_emb_file.append(step_infos[idx]["ins_emb_path"])
+                else:
+                    self.ins_emb_file.append(None)
         print("length of dataset", len(self.cond_rgb_file))
 
     def __len__(self):
@@ -347,20 +359,20 @@ class RobotDataset(Dataset):
         rgb = np.concatenate(rgb,axis=1)
 
         # text info
-        if self.args.text_cond:
+        if self.args.text_cond and len(self.ins_emb_file) > idx and self.ins_emb_file[idx] is not None:
             text_file = self.ins_emb_file[idx]
             labels = np.load(text_file)
         else:
             labels = np.array([self.labels[idx]],dtype=np.int32)
         
         # depth image
-        if self.args.use_depth:
+        if self.args.use_depth and len(self.cond_depth_file) > idx:
             cond_depth_file = self.cond_depth_file[idx]
             cond_depth = np.load(cond_depth_file)
             cond_depth = self.filter(cond_depth) if not self.args.depth_filter else self.filter2(cond_depth)
             cond_depth = cond_depth[np.newaxis]
 
-            depth_file = self.depth_files[idx]
+            depth_file = self.depth_file[idx]
             depths = []
             for i in range(len(depth_file)):
                 d = np.load(depth_file[i])
