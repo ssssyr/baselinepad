@@ -105,7 +105,8 @@ def main(args):
         experiment_dir = f"{args.results_dir}/{experiment_index:03d}-{model_string_name}-{uuid}"  # Create an experiment folder
         checkpoint_dir = f"{experiment_dir}/checkpoints"  # Stores saved model checkpoints
         eval_dir = f"{experiment_dir}/eval"
-        vae = AutoencoderKL.from_pretrained("/cephfs/shared/llm/sd-vae-ft-mse").to(device)
+        vae_path = getattr(args, 'vae_path', "/cephfs/shared/llm/sd-vae-ft-mse")
+        vae = AutoencoderKL.from_pretrained(vae_path).to(device)
         os.makedirs(checkpoint_dir, exist_ok=True)
         logger = create_logger(experiment_dir)
         logger.info(f"Experiment directory created at {experiment_dir}")
@@ -243,7 +244,11 @@ def main(args):
         logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0)
+    lr = getattr(args, 'learning_rate', 1e-4)
+    weight_decay = getattr(args, 'weight_decay', 0.0)
+    beta1 = getattr(args, 'adam_beta1', 0.9)
+    beta2 = getattr(args, 'adam_beta2', 0.999)
+    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(beta1, beta2))
 
     # Setup data:
     if args.dynamics:
@@ -509,6 +514,11 @@ if __name__ == "__main__":
     parser.add_argument("--global-batch-size", type=int, default=256)
     parser.add_argument("--global-seed", type=int, default=0)
     parser.add_argument("--vae", type=str, choices=["ema", "mse"], default="ema")  # Choice doesn't affect training
+    parser.add_argument("--vae-path", type=str, help="Path to VAE model directory")
+    parser.add_argument("--learning-rate", type=float, help="Learning rate for AdamW optimizer")
+    parser.add_argument("--weight-decay", type=float, help="Weight decay for AdamW optimizer")
+    parser.add_argument("--adam-beta1", type=float, help="AdamW beta1 parameter")
+    parser.add_argument("--adam-beta2", type=float, help="AdamW beta2 parameter")
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--log-every", type=int, default=100)
     parser.add_argument("--ckpt-every", type=int, default=30_000)

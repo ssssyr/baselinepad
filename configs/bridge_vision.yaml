@@ -6,7 +6,7 @@
 # ======================================================
 training:
   # Paths - 需要根据你的Bridge数据集路径调整
-  feature_path: "bridge_features"  # Bridge数据集特征路径
+  feature_path: "/home/ct_24210860031/812datasets/SYR/bridge_features"  # Bridge数据集特征路径
   video_path: null
   results_dir: "results_bridge_vision"
 
@@ -23,6 +23,12 @@ training:
   global_seed: 42
   num_workers: 8
   without_ema: false
+  
+  # Optimizer Settings
+  learning_rate: 1e-4  # Learning rate for AdamW optimizer
+  weight_decay: 0.0    # Weight decay for AdamW optimizer
+  adam_beta1: 0.9      # AdamW beta1 parameter
+  adam_beta2: 0.999    # AdamW beta2 parameter
 
   # Logging and Checkpointing
   log_every: 100
@@ -39,18 +45,19 @@ training:
 # ======================================================
 components:
   # VAE
-  vae: "ema"
+  vae: "ema"  # VAE type: "ema" or "mse"
+  vae_path: "/cephfs/shared/llm/sd-vae-ft-mse"  # Path to VAE model directory
 
   # Initialization
   dit_init: null
-  rgb_init: "/home/syr/code/models/pad_bridge_pre/bridge_pre.pt"  # 使用Bridge预训练模型
+  rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt"  # 使用Bridge预训练模型
 
   # Attention
   attn_mask: false
 
   # Text Conditioning - Bridge数据集通常有语言指令
   text_cond: true
-  clip_path: "/home/syr/code/models/clip-vit-base-patch32"
+  clip_path: "/home/ct_24210860031/812code/SYR/models/clip-vit-base-patch32"
   text_emb_size: 512
 
   # Depth Conditioning - 纯视觉预测，禁用深度
