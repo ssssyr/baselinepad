@@ -32,19 +32,15 @@ class ConfigLoader:
             
         return config or {}
     
-    def flatten_config(self, config: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
-        """Flatten nested config dictionary for easier access."""
-        flat_config = {}
-        
+    def flatten_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Flatten a nested config dictionary into a single level."""
+        items = {}
         for key, value in config.items():
-            new_key = f"{prefix}_{key}" if prefix else key
-            
             if isinstance(value, dict):
-                flat_config.update(self.flatten_config(value, new_key))
+                items.update(self.flatten_config(value))
             else:
-                flat_config[new_key] = value
-                
-        return flat_config
+                items[key] = value
+        return items
     
     def create_args_from_config(self, config: Dict[str, Any]) -> argparse.Namespace:
         """Convert config dictionary to argparse.Namespace object."""
