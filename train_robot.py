@@ -353,7 +353,7 @@ def main(args):
                 start_time = time()
 
             # evaluate dit
-            if train_steps % args.eval_every == 1 and train_steps > 0:
+            if train_steps > 0 and train_steps % args.eval_every == 0:
                 if accelerator.is_main_process:
                     logger.info("start evaluating model")
                     model.eval()

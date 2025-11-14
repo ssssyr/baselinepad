@@ -25,7 +25,7 @@ training:
   without_ema: false
   
   # Optimizer Settings
-  learning_rate: 1e-4  # Learning rate for AdamW optimizer
+  learning_rate: 1e-5  # Learning rate for AdamW optimizer
   weight_decay: 0.0    # Weight decay for AdamW optimizer
   adam_beta1: 0.9      # AdamW beta1 parameter
   adam_beta2: 0.999    # AdamW beta2 parameter
