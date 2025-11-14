@@ -188,9 +188,18 @@ def main(args):
             num_classes=args.num_classes,
             args=args,
         )
-        # load model from args.dit_init
-        from download import find_model
-        pretrained_dict = find_model(args.rgb_init)
+        # load model from args.rgb_init
+        checkpoint = torch.load(args.rgb_init, map_location='cpu')
+        # Handle different checkpoint formats
+        if isinstance(checkpoint, dict):
+            if "model" in checkpoint:
+                pretrained_dict = checkpoint["model"]
+            elif "state_dict" in checkpoint:
+                pretrained_dict = checkpoint["state_dict"]
+            else:
+                pretrained_dict = checkpoint
+        else:
+            pretrained_dict = checkpoint
         model_dict = model.state_dict()
         # 1. filter out unnecessary keys
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}

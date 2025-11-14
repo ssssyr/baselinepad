@@ -1,0 +1,86 @@
+# Configuration for Bridge Dataset - Pure Vision Prediction
+# This config is optimized for visual prediction without action conditioning
+
+# ======================================================
+#               General Training Settings
+# ======================================================
+training:
+  # Paths - 需要根据你的Bridge数据集路径调整
+  feature_path: "bridge_features"  # Bridge数据集特征路径
+  video_path: null
+  results_dir: "results_bridge_vision"
+
+  # Model
+  model: "DiT-XL/2"
+  image_size: 256
+  num_classes: 1000
+  predict_horizon: 3    # 预测4帧未来画面
+  skip_step: 4          # 每2帧采样一次
+
+  # Training Loop
+  epochs: 1000
+  global_batch_size: 128  # 根据GPU内存调整
+  global_seed: 42
+  num_workers: 8
+  without_ema: false
+
+  # Logging and Checkpointing
+  log_every: 100
+  eval_every: 2000
+  ckpt_every: 10000
+  ckpt_wrapper: false
+
+  # Resuming Training
+  resume: null
+  auto_resume: true
+
+# ======================================================
+#                 Component Settings
+# ======================================================
+components:
+  # VAE
+  vae: "ema"
+
+  # Initialization
+  dit_init: null
+  rgb_init: "/home/syr/code/models/pad_bridge_pre/bridge_pre.pt"  # 使用Bridge预训练模型
+
+  # Attention
+  attn_mask: false
+
+  # Text Conditioning - Bridge数据集通常有语言指令
+  text_cond: true
+  clip_path: "/home/syr/code/models/clip-vit-base-patch32"
+  text_emb_size: 512
+
+  # Depth Conditioning - 纯视觉预测，禁用深度
+  use_depth: false
+  d_hidden_size: 32
+  d_patch_size: 8
+  depth_filter: false
+
+  # Action Conditioning - 纯视觉预测，禁用动作
+  action_steps: 0       # 不预测动作
+  action_dim: 7
+  action_scale: 10.0
+  absolute_action: false
+  action_condition: false  # 不使用动作条件
+  learnable_action_pos: false
+
+  # Loss Configuration
+  action_loss_lambda: 0.0    # 动作损失权重为0
+  action_loss_start: 0
+
+# ======================================================
+#                  MoE Settings
+# ======================================================
+moe:
+  use_moe: false
+
+# ======================================================
+#                  WandB Logging
+# ======================================================
+wandb:
+  use_wandb: true
+  wandb_project: "bridge-vision-prediction"
+  wandb_run_name: "pure_vision_dit"
