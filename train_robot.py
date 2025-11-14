@@ -369,10 +369,11 @@ def main(args):
 
             model_kwargs = dict(
                 y=y,
-                x_cond=x_cond,
-                depth_cond=depth_cond,
-                depth=depth
+                x_cond=x_cond
             )
+            if args.use_depth:
+                model_kwargs['depth_cond'] = depth_cond
+                model_kwargs['depth'] = depth
             if action is not None and args.action_steps > 0:
                 model_kwargs['action'] = action
             if action_cond is not None and args.action_steps > 0 and args.action_condition:
@@ -462,9 +463,10 @@ def main(args):
 
                     eval_model_kwargs = dict(
                         y=y_b,
-                        x_cond=input_img,
-                        depth_cond=input_depth
+                        x_cond=input_img
                     )
+                    if args.use_depth:
+                        eval_model_kwargs['depth_cond'] = input_depth
                     if noise_action is not None:
                         eval_model_kwargs['noised_action'] = noise_action
                     if noise_depth is not None:
