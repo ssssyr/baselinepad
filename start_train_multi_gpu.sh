@@ -9,7 +9,8 @@ export CUDA_VISIBLE_DEVICES=4,5,6,7
 # 2. Distributed Training Parameters
 NUM_GPUS=4
 # Set a master port for communication. Change if this port is in use.
-MASTER_PORT=${PORT:-29500}
+# Find a random free port
+MASTER_PORT=${PORT:-$(shuf -i 29500-49151 -n 1)}
 
 # 3. Training Configuration
 TRAIN_SCRIPT="train_robot.py"
