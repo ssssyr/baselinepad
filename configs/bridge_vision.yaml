@@ -55,6 +55,9 @@ components:
   # Attention
   attn_mask: false
 
+  # Dynamics - Enable dynamics modeling for Bridge dataset
+  dynamics: true
+
   # Text Conditioning - Bridge数据集通常有语言指令
   text_cond: true
   clip_path: "/home/ct_24210860031/812code/SYR/models/clip-vit-base-patch32"
