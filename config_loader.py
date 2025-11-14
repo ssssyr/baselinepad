@@ -70,9 +70,14 @@ class ConfigLoader:
         # Override with command line arguments (only if they were explicitly set)
         args_dict = vars(args)
         for key, value in args_dict.items():
-            # Only override if the argument was explicitly provided
-            # This is a simple heuristic - you might want to improve this
-            if value is not None:
+            # For boolean arguments (like action="store_true"), if YAML has a value and CLI has default False,
+            # prefer YAML value. Otherwise, use CLI value if it's not None.
+            if isinstance(value, bool) and key in merged_dict and isinstance(merged_dict[key], bool):
+                # If CLI value is True (explicitly set), use it; otherwise prefer YAML value
+                if value is True:
+                    merged_dict[key] = value
+                # If CLI value is False (default), keep YAML value if it exists
+            elif value is not None:
                 merged_dict[key] = value
         
         return argparse.Namespace(**merged_dict)
@@ -124,7 +129,7 @@ def save_config(config: argparse.Namespace, save_path: str):
                     'global_seed', 'num_workers', 'without_ema', 'log_every', 'eval_every',
                     'ckpt_every', 'ckpt_wrapper', 'resume', 'auto_resume', 'learning_rate',
                     'weight_decay', 'adam_beta1', 'adam_beta2'],
-        'components': ['vae', 'vae_path', 'dit_init', 'rgb_init', 'attn_mask', 'text_cond', 'clip_path',
+        'components': ['vae', 'vae_path', 'dit_init', 'rgb_init', 'attn_mask', 'dynamics', 'text_cond', 'clip_path',
                       'text_emb_size', 'use_depth', 'd_hidden_size', 'd_patch_size', 'depth_filter',
                       'action_steps', 'action_dim', 'action_scale', 'absolute_action', 'action_condition',
                       'learnable_action_pos', 'action_loss_lambda', 'action_loss_start'],
