@@ -1,0 +1,37 @@
+{
+  "sample_id": "stack_blocks_01",
+  "task": "stack_blocks",
+  "instruction": "put plus in center of the table in front of red cube\n\nconfidence: 0.6",
+  "frame_idx": 12,
+  "source_traj": "/mnt/sda/datasets/bridge_dataset/raw/bridge_data_v2/deepthought_toykitchen2/stack_blocks/17/2023-05-12_18-49-54/raw/traj_group0/traj34",
+  "actions": [
+    [
+      0.003690114382586207,
+      0.0018156401301732197,
+      -0.0021914654027503366,
+      -0.0082092253619353,
+      0.01914656749356407,
+      0.0003337379272903798,
+      1.0
+    ],
+    [
+      -0.0013956731848413506,
+      -0.000341365953111232,
+      -0.004324648039959952,
+      -0.007678758442656954,
+      0.0159716577408612,
+      -0.005513270402298774,
+      1.0
+    ],
+    [
+      -0.00331523877060913,
+      0.0006743886077276995,
+      -0.007645657863537103,
+      -0.012213471641233153,
+      0.02687040241636273,
+      0.014460123801340312,
+      1.0
+    ]
+  ],
+  "action_description": "Future 3-step actions: [x, y, z, roll, pitch, yaw, gripper] for each step"
+}

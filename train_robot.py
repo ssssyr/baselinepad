@@ -370,11 +370,13 @@ def main(args):
             model_kwargs = dict(
                 y=y,
                 x_cond=x_cond,
-                action=action,
                 depth_cond=depth_cond,
-                depth=depth,
-                action_cond=action_cond
+                depth=depth
             )
+            if action is not None and args.action_steps > 0:
+                model_kwargs['action'] = action
+            if action_cond is not None and args.action_steps > 0 and args.action_condition:
+                model_kwargs['action_cond'] = action_cond
 
             if eval_batch is None:
                 eval_batch = {
@@ -461,11 +463,14 @@ def main(args):
                     eval_model_kwargs = dict(
                         y=y_b,
                         x_cond=input_img,
-                        noised_action=noise_action,
-                        depth_cond=input_depth,
-                        noised_depth=noise_depth,
-                        action_cond=action_cond_b
+                        depth_cond=input_depth
                     )
+                    if noise_action is not None:
+                        eval_model_kwargs['noised_action'] = noise_action
+                    if noise_depth is not None:
+                        eval_model_kwargs['noised_depth'] = noise_depth
+                    if action_cond_b is not None:
+                        eval_model_kwargs['action_cond'] = action_cond_b
                     samples = eval_diffusion.p_sample_loop(
                         model, z.shape, z, clip_denoised=False, model_kwargs=eval_model_kwargs, progress=True,
                         device=device

@@ -1,0 +1,37 @@
+{
+  "sample_id": "open_microwave_01",
+  "task": "open_microwave",
+  "instruction": "open microwave",
+  "frame_idx": 10,
+  "source_traj": "/mnt/sda/datasets/bridge_dataset/raw/bridge_data_v2/deepthought_toykitchen1/open_microwave/00/2023-04-19_15-48-53/raw/traj_group0/traj5",
+  "actions": [
+    [
+      0.00024269166943602372,
+      0.001592531981614919,
+      0.0012115107585543928,
+      0.018644710911115542,
+      -0.006293468226441431,
+      0.005463456582071541,
+      0.0
+    ],
+    [
+      -0.0028235202580223495,
+      -0.0022748972202250688,
+      -0.0024736080040289286,
+      -0.00360930678866679,
+      0.013016811957100081,
+      -0.004567598064965533,
+      0.0
+    ],
+    [
+      -0.007174782011380665,
+      -0.00021088080663435316,
+      -0.003760023934806204,
+      0.0012233978948145519,
+      0.017567260414315982,
+      0.004435454186482175,
+      0.0
+    ]
+  ],
+  "action_description": "Future 3-step actions: [x, y, z, roll, pitch, yaw, gripper] for each step"
+}

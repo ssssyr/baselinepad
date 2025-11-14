@@ -307,7 +307,11 @@ def main(args):
             if args.action_steps>0 and args.action_condition:
                 action_cond = action_cond.to(device)
 
-            model_kwargs = dict(y=y,x_cond=x_cond,action=action,depth_cond=depth_cond,depth=depth,action_cond=action_cond)
+            model_kwargs = dict(y=y,x_cond=x_cond,depth_cond=depth_cond,depth=depth)
+            if args.action_steps > 0:
+                model_kwargs['action'] = action
+            if args.action_steps > 0 and args.action_condition:
+                model_kwargs['action_cond'] = action_cond
             if eval_batch == None:
                 eval_batch = {
                     'input_img': x_cond,
@@ -402,7 +406,13 @@ def main(args):
                     noise_depth = torch.randn(size=target_depth.shape, device=device)
                     noise_action = torch.randn(size=rela_action.shape, device=device)
                     #noise_action = torch.randn(input_img.shape[0], 4, args.action_lens, device=device)
-                    eval_model_kwargs = dict(y=y, x_cond=input_img,noised_action=noise_action,depth_cond=input_depth,noised_depth=noise_depth,action_cond=action_cond)
+                    eval_model_kwargs = dict(y=y, x_cond=input_img,depth_cond=input_depth)
+                    if args.use_depth:
+                        eval_model_kwargs['noised_depth'] = noise_depth
+                    if args.action_steps > 0:
+                        eval_model_kwargs['noised_action'] = noise_action
+                    if args.action_steps > 0 and args.action_condition:
+                        eval_model_kwargs['action_cond'] = action_cond
                     samples = eval_diffusion.p_sample_loop(
                         model, z.shape, z, clip_denoised=False, model_kwargs=eval_model_kwargs, progress=True,
                         device=device

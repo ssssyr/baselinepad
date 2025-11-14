@@ -1,0 +1,37 @@
+{
+  "sample_id": "close_microwave_02",
+  "task": "close_microwave",
+  "instruction": "close microwave",
+  "frame_idx": 10,
+  "source_traj": "/mnt/sda/datasets/bridge_dataset/raw/bridge_data_v2/deepthought_toykitchen1/close_microwave/00/2023-04-19_16-09-40/raw/traj_group0/traj3",
+  "actions": [
+    [
+      0.010483456482228537,
+      -0.006433961398787755,
+      -0.0037957443206744525,
+      -0.02871669187572355,
+      -0.006883285452326985,
+      -0.009996746043505362,
+      1.0
+    ],
+    [
+      0.013554842915294407,
+      -0.007559485961424944,
+      -0.0019187409591224988,
+      -0.02434591446684808,
+      -0.0017848448187966874,
+      -0.019120874076513042,
+      1.0
+    ],
+    [
+      0.007684605477772277,
+      -0.00756208918719975,
+      0.0010490529597098723,
+      -0.03908215717496145,
+      0.0032052257806528058,
+      -0.017097497955113526,
+      1.0
+    ]
+  ],
+  "action_description": "Future 3-step actions: [x, y, z, roll, pitch, yaw, gripper] for each step"
+}
