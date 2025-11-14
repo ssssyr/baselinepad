@@ -15,7 +15,7 @@ MASTER_PORT=${PORT:-$(shuf -i 29500-49151 -n 1)}
 # 3. Training Configuration
 TRAIN_SCRIPT="train_robot.py"
 # This script assumes you are training the vision-only model.
-CONFIG_FILE="configs/bridge_vision.yaml"
+CONFIG_FILE="bridge_vision.yaml"
 
 # 4. Batch Size
 # Set per-GPU batch size. Total batch size will be (BATCH_SIZE * NUM_GPUS).
