@@ -14,9 +14,9 @@ META_CONFIG = {
 }
 
 BRIDGE_CONFIG = {
-    'ckpt_path': "ckpt/bridge_pre.pt", # replace!
-    'vae_path': "/home/disk2/gyj/llm/sd-vae-ft-mse/", # replace!
-    'clip_path': "/home/disk2/gyj/llm/clip-vit-base-patch32/", # replace!
+    'ckpt_path': "/home/syr/code/models/pad_bridge_pre/bridge_pre.pt", # replace!
+    'vae_path': "/home/syr/code/models/sd-vae-ft-mse/", # replace!
+    'clip_path': "/home/syr/code/models/clip-vit-base-patch32/", # replace!
     'sample_name':"sample_0"
 }
 

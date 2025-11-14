@@ -311,7 +311,7 @@ class RobotDataset(Dataset):
 
                 # future frames
                 for i in range(args.predict_horizon):
-                    pre_idx = idx + i*skip_step
+                    pre_idx = idx + (i+1)*skip_step
                     if pre_idx>=len(step_infos) or step_infos[pre_idx]["episode"] != cond_traj_idx:
                         features.append(features[-1])
                         if args.use_depth and len(depths) > 0:

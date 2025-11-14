@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import time
 import os
 from evaluation.agent import DiffusionAgent
-from evaluation.run_cfg import INSTRUCTIONS, CONFIG, BRIDGE_CONFIG 
+from evaluation.run_cfg import INSTRUCTIONS, BRIDGE_CONFIG 
 from decord import VideoReader, cpu
 
 def _load_video(video_path, frame_ids):
