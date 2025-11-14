@@ -244,10 +244,10 @@ def main(args):
         logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
-    lr = getattr(args, 'learning_rate', 1e-4)
-    weight_decay = getattr(args, 'weight_decay', 0.0)
-    beta1 = getattr(args, 'adam_beta1', 0.9)
-    beta2 = getattr(args, 'adam_beta2', 0.999)
+    lr = float(getattr(args, 'learning_rate', 1e-4))
+    weight_decay = float(getattr(args, 'weight_decay', 0.0))
+    beta1 = float(getattr(args, 'adam_beta1', 0.9))
+    beta2 = float(getattr(args, 'adam_beta2', 0.999))
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(beta1, beta2))
 
     # Setup data:
