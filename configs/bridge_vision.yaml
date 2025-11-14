@@ -46,7 +46,7 @@ training:
 components:
   # VAE
   vae: "ema"  # VAE type: "ema" or "mse"
-  vae_path: "/cephfs/shared/llm/sd-vae-ft-mse"  # Path to VAE model directory
+  vae_path: "/home/ct_24210860031/812code/SYR/models/sd-vae-ft-mse"  # Path to VAE model directory
 
   # Initialization
   dit_init: null

@@ -106,7 +106,7 @@ def main(args):
         checkpoint_dir = f"{experiment_dir}/checkpoints"  # Stores saved model checkpoints
         eval_dir = f"{experiment_dir}/eval"
         vae_path = getattr(args, 'vae_path', "/cephfs/shared/llm/sd-vae-ft-mse")
-        vae = AutoencoderKL.from_pretrained(vae_path, local_files_only=True, trust_remote_code=True).to(device)
+        vae = AutoencoderKL.from_pretrained(vae_path, local_files_only=True).to(device)
         os.makedirs(checkpoint_dir, exist_ok=True)
         logger = create_logger(experiment_dir)
         logger.info(f"Experiment directory created at {experiment_dir}")
