@@ -28,6 +28,7 @@ import logging
 import os
 from accelerate import Accelerator
 
+from config_loader import load_config, save_config
 from models import DiT_models
 from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
@@ -77,228 +78,8 @@ def create_logger(logging_dir):
     return logger
 
 
-def center_crop_arr(pil_image, image_size):
-    """
-    Center cropping implementation from ADM.
-    https://github.com/openai/guided-diffusion/blob/8fb3ad9197f16bbc40620447b2742e13458d2831/guided_diffusion/image_datasets.py#L126
-    """
-    while min(*pil_image.size) >= 2 * image_size:
-        pil_image = pil_image.resize(
-            tuple(x // 2 for x in pil_image.size), resample=Image.BOX
-        )
-
-    scale = image_size / min(*pil_image.size)
-    pil_image = pil_image.resize(
-        tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
-    )
-
-    arr = np.array(pil_image)
-    crop_y = (arr.shape[0] - image_size) // 2
-    crop_x = (arr.shape[1] - image_size) // 2
-    return Image.fromarray(arr[crop_y: crop_y + image_size, crop_x: crop_x + image_size])
-
-
-class CustomDataset2(Dataset):
-    def __init__(self, features_dir, args):
-        self.features_dir = features_dir
-        self.video_path = args.video_path
-        self.args = args
-
-        # robotic data
-        self.condition_files, self.features_files, self.cond_depth_files, self.depth_files, \
-        self.labels, self.ins_emb_files, self.cond_action, self.action_list = self.process_dataset(features_dir,skip_step=args.skip_step,video_only=False)
-        
-        # video data
-        self.condition_files_v, self.features_files_v, self.cond_depth_files_v, self.depth_files_v, \
-        self.labels_v, self.ins_emb_files_v, self.cond_action_v, self.action_list_v = self.process_dataset(self.video_path,skip_step=6,video_only=True)
-
-    def process_dataset(self,features_dir,skip_step=4,video_only=False):
-        condition_file = []
-        features_file = []
-        cond_depth_file = []
-        depth_file = []
-        labels = []
-        ins_emb_file = []
-        cond_action = []
-        action_list = []
-
-        features_dirs = features_dir.split("+")
-        episode_info = []
-        for dir in features_dirs:
-            step_info = []
-            # load json information, currently very dirty
-            json_path = os.path.join(dir, "dataset_rgb_s_d.json")
-            if not os.path.exists(json_path):
-                json_path = os.path.join(dir, "dataset_info_traj.json")
-            with open(json_path, "r") as f:
-                episode_info_json = json.load(f)
-            if video_only:
-                episode_info_f = []
-                for ii, traj in enumerate(episode_info_json):
-                    for step in traj[str(ii)]:
-                        episode_info_f.append(step)
-            else:
-                episode_info_f = episode_info_json
-
-            for step in episode_info_f:
-                if 'wrist_1' in step.keys(): # for metaworld data
-                    step["wrist_1"] = os.path.join(dir, step["wrist_1"])
-                elif 'path' in step.keys(): # for bridge data
-                    step['wrist_1'] = os.path.join(dir, step['path'])
-                
-                if 'state' not in step.keys(): # for bridge data
-                    step['state'] = np.array(step['action'])
-                
-                step["depth_1"] = os.path.join(dir, step["depth_1"]) if 'depth_1' in step.keys() else None
-                step["ins_emb_path"] = os.path.join(dir, step["ins_emb_path"])
-
-                step_info.append(step)
-            episode_info += [step for step in step_info if int(step["episode"])%10!=9]
-        
-        # start prepare input
-        for idx, episode in enumerate(episode_info):
-            # episode: {"idx":train_steps, "episode": traj_id, "frame": episode_steps, "path": f'episode{traj_id:07}/frame{episode_steps:04}.npy', "lable": traj_id}
-            cond_traj_idx = episode_info[idx]["episode"]
-            if idx+skip_step >= len(episode_info):
-                break
-            pred_traj_idx = episode_info[idx+skip_step]["episode"]
-            
-            # if idx+step>traj length, just use last frame 
-            if cond_traj_idx == pred_traj_idx:
-                condition_file.append(episode_info[idx]["wrist_1"])
-                cond_depth_file.append(episode_info[idx]["depth_1"]) if args.use_depth else None
-                if args.action_steps>0:
-                    action = episode_info[idx]['state']
-                    cond_action.append(action)
-                else:
-                    cond_action.append(None)
-                features = []
-                depths = []
-                actions = []
-                cur_idx = idx
-                for i in range(args.predict_horizon):
-                    pre_idx = cur_idx+skip_step
-                    # TODO
-                    if pre_idx>=len(episode_info) or episode_info[pre_idx]["episode"] != cond_traj_idx:
-                        features.append(features[-1])
-                        depths.append(depths[-1]) if args.use_depth else None
-                        actions.append(actions[-1]) if args.action_steps>0 else None
-                    else:
-                        features.append(episode_info[pre_idx]["wrist_1"])
-                        depths.append(episode_info[pre_idx]["depth_1"]) if args.use_depth else None
-                        if args.action_steps>0:
-                            action = episode_info[pre_idx]['state'] #(1,7)
-                            # print(action)
-                            actions.append(action)
-                        else:
-                            actions.append(None)
-                    cur_idx = pre_idx
-
-                # features_file.append(episode_info[idx+skip_step]["path"] if cond_traj_idx == pred_traj_idx else features_file[-1])
-                features_file.append(features) # [[x,x,x],[x,x,x],[x,x,x]]
-                labels.append(int(cond_traj_idx))
-                ins_emb_file.append(episode_info[idx]["ins_emb_path"])
-                depth_file.append(depths)
-                action_list.append(actions)
-        print("length of dataset", len(condition_file))
-        return condition_file, features_file, cond_depth_file, depth_file, labels, ins_emb_file, cond_action, action_list        
-
-    def __len__(self):
-        assert len(self.features_files) == len(self.labels), \
-            "Number of feature files and label files should be same"
-        return max(len(self.features_files),len(self.features_files_v))
-
-    def filter(self, depth):
-        depth = cv2.resize(depth, (32,32), interpolation=cv2.INTER_NEAREST)
-        return depth
-    
-    def filter2(self, depth):
-        depth = np.clip(depth,1000,5000)/5000
-        depth = np.array(depth*256,dtype=np.uint8)
-        depth = cv2.medianBlur(depth, 15)
-        depth = cv2.resize(depth,(32,32),interpolation=cv2.INTER_NEAREST)/256
-        return depth
-
-    def __getitem__(self, idx):
-        
-        
-        robot_sample = random.random() > 0.3
-        loss_mask = np.array([1.0]) if robot_sample else np.array([0.0])
-        if robot_sample:
-            idx = idx % len(self.features_files)
-            condition_files = self.condition_files
-            features_files = self.features_files
-            ins_emb_files = self.ins_emb_files
-            cond_depth_files = self.cond_depth_files
-            depth_files = self.depth_files
-            action_list = self.action_list
-            cond_action_list = self.cond_action
-        else:
-            idx = idx % len(self.features_files_v)
-            condition_files = self.condition_files_v
-            features_files = self.features_files_v
-            ins_emb_files = self.ins_emb_files_v
-            cond_depth_files = self.cond_depth_files_v
-            depth_files = self.depth_files_v
-            action_list = self.action_list_v
-            cond_action_list = self.cond_action_v
-
-        # rgb image
-        condition_file = condition_files[idx]
-        conditions = np.load(condition_file)
-        feature_file = features_files[idx]
-        features = []
-        for i in range(len(feature_file)):
-            features.append(np.load(feature_file[i]))
-        features = np.concatenate(features,axis=1)
-
-        # text info
-        if args.text_cond:
-            text_file = ins_emb_files[idx]
-            labels = np.load(text_file)
-        else:
-            labels = np.array([self.labels[idx]],dtype=np.int32)
-        
-        # depth image
-        if args.use_depth and robot_sample:
-            cond_depth_file = cond_depth_files[idx]
-            cond_depth = np.load(cond_depth_file)
-            cond_depth = self.filter(cond_depth) if not args.depth_filter else self.filter2(cond_depth)
-            cond_depth = cond_depth[np.newaxis]
-
-            depth_file = depth_files[idx]
-            depths = []
-            for i in range(len(depth_file)):
-                d = np.load(depth_file[i])
-                d = self.filter(d) if not args.depth_filter else self.filter2(d)
-                depths.append(d)
-            depths = np.stack(depths)
-        else:
-            cond_depth = np.zeros((1,32,32))
-            depths = np.zeros((args.predict_horizon,32,32))
-
-        # actions
-        if args.action_steps>0 and robot_sample:
-            if args.absolute_action:
-                action = np.array(action_list[idx])
-            else:
-                action = np.array(action_list[idx])-np.array(cond_action_list[idx])
-            action = action[:args.action_steps,:]
-            action = action*args.action_scale
-            cond_action = np.array(cond_action_list[idx]).reshape(1,-1)*args.action_scale
-
-            # whether condition on current action
-            if args.action_condition:
-                action = action.reshape(1,-1)
-                assert action.shape[-1] == args.action_dim*args.action_steps
-                assert cond_action.shape[-1] == args.action_dim
-            else:
-                assert action.shape[-1] == args.action_dim
-        else:
-            action = np.zeros((1,args.action_dim*args.action_steps))
-            cond_action = np.zeros((1,args.action_dim))
-
-        return torch.from_numpy(conditions), torch.from_numpy(features), torch.from_numpy(labels), torch.from_numpy(action).float(), torch.from_numpy(cond_depth).float(), torch.from_numpy(depths).float(), torch.from_numpy(cond_action).float(), torch.from_numpy(loss_mask).float()
+# Import dataset classes from the new dataset module
+from dataset import CustomDataset2
 
 #################################################################################
 #                                  Training Loop                                #
@@ -328,6 +109,24 @@ def main(args):
         os.makedirs(checkpoint_dir, exist_ok=True)
         logger = create_logger(experiment_dir)
         logger.info(f"Experiment directory created at {experiment_dir}")
+        
+        # Save the current configuration for reproducibility
+        config_save_path = f"{experiment_dir}/config.yaml"
+        save_config(args, config_save_path)
+        logger.info(f"Configuration saved to {config_save_path}")
+        wandb_run = None
+        if args.use_wandb:
+            try:
+                import wandb
+            except ImportError as exc:
+                raise RuntimeError("Weights & Biases is not installed. Run `pip install wandb` or disable --use-wandb.") from exc
+            wandb_project = args.wandb_project or "prediction_with_action"
+            run_name = args.wandb_run_name or f"{model_string_name}-{experiment_index:03d}"
+            wandb_run = wandb.init(
+                project=wandb_project,
+                name=run_name,
+                config=vars(args),
+            )
 
     # Create model:
     assert args.image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
@@ -556,6 +355,16 @@ def main(args):
                 avg_loss_d = avg_loss_d.item()
                 if accelerator.is_main_process:
                     logger.info(f"(step={train_steps:07d}) Train Loss image: {avg_loss:.6f}, Train Loss action:{avg_loss_a:.6f}, Train Loss depth:{avg_loss_d:.6f}, Train Steps/Sec: {steps_per_sec:.2f}")
+                    if args.use_wandb:
+                        log_payload = {
+                            "train/loss_image": avg_loss,
+                            "train/steps_per_sec": steps_per_sec,
+                        }
+                        if args.action_steps > 0:
+                            log_payload["train/loss_action"] = avg_loss_a
+                        if args.use_depth:
+                            log_payload["train/loss_depth"] = avg_loss_d
+                        wandb.log(log_payload, step=train_steps)
                 # Reset monitoring variables:
                 running_loss, running_loss_a, running_loss_d = 0, 0, 0
                 log_steps = 0
@@ -589,22 +398,37 @@ def main(args):
                     else:
                         img_samples = samples
                     img_mse_error = torch.nn.functional.mse_loss(target_img, img_samples)
-                    logger.info(f"(step={train_steps:07d}) Train img mse: {img_mse_error:.6f}")
+                    img_mse_value = img_mse_error.detach().item()
+                    logger.info(f"(step={train_steps:07d}) Train img mse: {img_mse_value:.6f}")
                     if args.use_depth:
                         depth_mse_error = torch.nn.functional.mse_loss(target_depth, depth_samples)
-                        logger.info(f"(step={train_steps:07d}) Train depth mse: {depth_mse_error:.6f}")
+                        depth_mse_value = depth_mse_error.detach().item()
+                        logger.info(f"(step={train_steps:07d}) Train depth mse: {depth_mse_value:.6f}")
+                    else:
+                        depth_mse_value = None
                     if args.action_steps>0:
                         print("action_samples",action_samples.shape,"action_gt",rela_action.shape, "loss_mask", loss_mask.shape)
                         action_mse_error = ((rela_action-action_samples)**2*loss_mask.unsqueeze(1).unsqueeze(1)).mean()
-                        logger.info(f"(step={train_steps:07d}) Train action mse: {action_mse_error:.6f}")
-                        if action_mse_error < best_action_loss:
-                            best_action_loss = action_mse_error
+                        action_mse_value = action_mse_error.detach().item()
+                        logger.info(f"(step={train_steps:07d}) Train action mse: {action_mse_value:.6f}")
+                        if action_mse_value < best_action_loss:
+                            best_action_loss = action_mse_value
                             checkpoint_path = f"{checkpoint_dir}/best_action_loss.pt"
                             torch.save({
                                 "model": model.module.state_dict() if accelerator.num_processes > 1 else model.state_dict(),
                                 "args": args
                             }, checkpoint_path)
                             logger.info(f"Saved checkpoint to {checkpoint_path}")
+                    else:
+                        action_mse_value = None
+                    if args.use_wandb:
+                        eval_log = {"eval/loss_image": img_mse_value}
+                        if depth_mse_value is not None:
+                            eval_log["eval/loss_depth"] = depth_mse_value
+                        if action_mse_value is not None:
+                            eval_log["eval/loss_action"] = action_mse_value
+                            eval_log["eval/best_action_loss"] = best_action_loss
+                        wandb.log(eval_log, step=train_steps)
                     #img_samples = img_samples.reshape((N,pred_lens,-1,img_samples.shape[2],img_samples.shape[3]))
                     #depth_samples = depth_samples.reshape((N, pred_lens, -1, depth_samples.shape[2], depth_samples.shape[3]))
                     img_save_path = os.path.join(eval_dir, 'step_' + str(train_steps))
@@ -718,7 +542,33 @@ if __name__ == "__main__":
     parser.add_argument("--action_loss_lambda", type=float, default=1.0)
     # action_loss_start
     parser.add_argument("--action_loss_start", type=int, default=0)
+    # wandb logging
+    parser.add_argument("--use-wandb", action="store_true")
+    parser.add_argument("--wandb-project", type=str, default=None)
+    parser.add_argument("--wandb-run-name", type=str, default=None)
 
     
-    args = parser.parse_args()
+    # Parse command line arguments
+    cli_args = parser.parse_args()
+    
+    # Load configuration from YAML file and merge with CLI args
+    try:
+        args = load_config(cli_args.config, "configs", cli_args)
+        print(f"✓ Loaded configuration from: configs/{cli_args.config}")
+    except FileNotFoundError:
+        print(f"⚠ Config file not found: configs/{cli_args.config}")
+        print("Using default configuration...")
+        args = load_config("default.yaml", "configs")
+    except Exception as e:
+        print(f"✗ Error loading config: {e}")
+        print("Falling back to command line arguments only...")
+        args = cli_args
+    
+    # Convert dashes to underscores for compatibility
+    for attr_name in dir(args):
+        if '-' in attr_name and not attr_name.startswith('_'):
+            new_name = attr_name.replace('-', '_')
+            if not hasattr(args, new_name):
+                setattr(args, new_name, getattr(args, attr_name))
+    
     main(args)

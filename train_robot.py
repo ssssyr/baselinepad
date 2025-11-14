@@ -28,6 +28,7 @@ import logging
 import os
 from accelerate import Accelerator
 
+from config_loader import load_config, save_config
 from models import DiT_models
 from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
@@ -75,184 +76,8 @@ def create_logger(logging_dir):
     return logger
 
 
-def center_crop_arr(pil_image, image_size):
-    """
-    Center cropping implementation from ADM.
-    https://github.com/openai/guided-diffusion/blob/8fb3ad9197f16bbc40620447b2742e13458d2831/guided_diffusion/image_datasets.py#L126
-    """
-    while min(*pil_image.size) >= 2 * image_size:
-        pil_image = pil_image.resize(
-            tuple(x // 2 for x in pil_image.size), resample=Image.BOX
-        )
-
-    scale = image_size / min(*pil_image.size)
-    pil_image = pil_image.resize(
-        tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
-    )
-
-    arr = np.array(pil_image)
-    crop_y = (arr.shape[0] - image_size) // 2
-    crop_x = (arr.shape[1] - image_size) // 2
-    return Image.fromarray(arr[crop_y: crop_y + image_size, crop_x: crop_x + image_size])
-
-
-class RobotDataset(Dataset):
-    def __init__(self, features_dir, args):
-
-        # You need to implement a new dataset class if youre dataset structure is different
-        ################################ Default dataset structrue:############################
-        #   dataset_rgb_s_d.json
-        #   episode 0
-        #       clip_emb
-        #       step 0.npy
-        #       step 1.npy
-        #       ...
-        #   episode 1
-        #       clip_emb
-        #       step 0.npy
-        #       step 1.npy
-        #       ...
-        #   episode 2
-        ####################################################################################
-        
-        self.features_dir = features_dir
-        self.args = args
-        # rgb
-        self.cond_rgb_file = []
-        self.rgb_file = []
-        # depth
-        self.cond_depth_file = []
-        self.depth_file = []
-        # robot pose
-        self.cond_action = []
-        self.action = []
-        # instruction
-        self.ins_emb_file = []
-
-        skip_step = args.skip_step # prediction skip step
-
-        import json
-        features_dirs = features_dir.split("+")
-        step_infos = []
-        for dir in features_dirs:
-            step_info = []
-            with open(os.path.join(dir, "dataset_rgb_s_d.json"), "r") as f:
-                step_infos_f = json.load(f)
-            for step in step_infos_f:
-                step["wrist_1"] = os.path.join(dir, step["wrist_1"])
-                step["depth_1"] = os.path.join(dir, step["depth_1"])
-                step["ins_emb_path"] = os.path.join(dir, step["ins_emb_path"])
-                step_info.append(step)
-            step_infos += [step for step in step_info]
-            # step_infos += [step for step in step_info if int(step["episode"])%50<20]
-        
-        # start prepare input
-        for idx, _ in enumerate(step_infos):
-            # episode: {"idx":train_steps, "episode": traj_id, "frame": episode_steps, "path": f'episode{traj_id:07}/frame{episode_steps:04}.npy', "lable": traj_id}
-            cond_traj_idx = step_infos[idx]["episode"]
-            if idx+skip_step >= len(step_infos):
-                break
-            pred_traj_idx = step_infos[idx+skip_step]["episode"]
-            
-            # if idx+step>traj length, just use last frame 
-            if cond_traj_idx == pred_traj_idx:
-                # current frame
-                self.cond_rgb_file.append(step_infos[idx]["wrist_1"])
-                self.cond_depth_file.append(step_infos[idx]["depth_1"]) if args.use_depth else None
-                self.cond_action.append(step_infos[idx]['state']) if args.action_steps>0 else None
-                features = []
-                depths = []
-                actions = []
-
-                # future frames
-                for i in range(args.predict_horizon):
-                    pre_idx = idx + i*skip_step
-                    if pre_idx>=len(step_infos) or step_infos[pre_idx]["episode"] != cond_traj_idx:
-                        features.append(features[-1])
-                        depths.append(depths[-1]) if args.use_depth else None
-                        actions.append(actions[-1]) if args.action_steps>0 else None
-                    else:
-                        features.append(step_infos[pre_idx]["wrist_1"])
-                        depths.append(step_infos[pre_idx]["depth_1"]) if args.use_depth else None
-                        actions.append(step_infos[pre_idx]['state']) if args.action_steps>0 else None
-
-                self.rgb_file.append(features) # [[x,x,x],[x,x,x],[x,x,x]]
-                self.depth_file.append(depths)
-                self.action.append(actions)
-                self.ins_emb_file.append(step_infos[idx]["ins_emb_path"])
-        print("length of dataset", len(self.cond_rgb_file))
-
-    def __len__(self):
-        return len(self.rgb_file)
-
-    def filter(self, depth):
-        depth = cv2.resize(depth, (32,32), interpolation=cv2.INTER_NEAREST)
-        return depth
-    
-    def filter2(self, depth):
-        depth = np.clip(depth,1000,5000)/5000
-        depth = np.array(depth*256,dtype=np.uint8)
-        depth = cv2.medianBlur(depth, 15)
-        depth = cv2.resize(depth,(32,32),interpolation=cv2.INTER_NEAREST)/256
-        return depth
-
-    def __getitem__(self, idx):
-        # rgb image
-        condition_file = self.cond_rgb_file[idx]
-        rgb_cond = np.load(condition_file)
-        feature_file = self.rgb_file[idx]
-        rgb = []
-        for i in range(len(feature_file)):
-            rgb.append(np.load(feature_file[i]))
-        rgb = np.concatenate(rgb,axis=1)
-
-        # text info
-        if args.text_cond:
-            text_file = self.ins_emb_file[idx]
-            labels = np.load(text_file)
-        else:
-            labels = np.array([self.labels[idx]],dtype=np.int32)
-        
-        # depth image
-        if args.use_depth:
-            cond_depth_file = self.cond_depth_file[idx]
-            cond_depth = np.load(cond_depth_file)
-            cond_depth = self.filter(cond_depth) if not args.depth_filter else self.filter2(cond_depth)
-            cond_depth = cond_depth[np.newaxis]
-
-            depth_file = self.depth_files[idx]
-            depths = []
-            for i in range(len(depth_file)):
-                d = np.load(depth_file[i])
-                d = self.filter(d) if not args.depth_filter else self.filter2(d)
-                depths.append(d)
-            depths = np.stack(depths)
-        else:
-            cond_depth = np.array([0])
-            depths = np.array([0])
-
-        # actions
-        if args.action_steps>0:
-            if args.absolute_action:
-                action = np.array(self.action[idx])
-            else:
-                action = np.array(self.action[idx])-np.array(self.cond_action[idx])
-            action = action[:args.action_steps,:]
-            action = action*args.action_scale
-            cond_action = np.array(self.cond_action[idx]).reshape(1,-1)*args.action_scale
-
-            # whether condition on current pose
-            if args.action_condition:
-                action = action.reshape(1,-1)
-                assert action.shape[-1] == args.action_dim*args.action_steps
-                assert cond_action.shape[-1] == args.action_dim
-            else:
-                assert action.shape[-1] == args.action_dim
-        else:
-            action = np.array([0])
-            cond_action = np.array([0])
-
-        return torch.from_numpy(rgb_cond), torch.from_numpy(rgb), torch.from_numpy(cond_depth).float(), torch.from_numpy(depths).float(), torch.from_numpy(cond_action).float(), torch.from_numpy(action).float(), torch.from_numpy(labels).float()
+# Import dataset classes from the new dataset module
+from dataset import RobotDataset
 
 #################################################################################
 #                                  Training Loop                                #
@@ -282,6 +107,25 @@ def main(args):
         os.makedirs(checkpoint_dir, exist_ok=True)
         logger = create_logger(experiment_dir)
         logger.info(f"Experiment directory created at {experiment_dir}")
+        
+        # Save the current configuration for reproducibility
+        config_save_path = f"{experiment_dir}/config.yaml"
+        save_config(args, config_save_path)
+        logger.info(f"Configuration saved to {config_save_path}")
+        
+        wandb_run = None
+        if args.use_wandb:
+            try:
+                import wandb
+            except ImportError as exc:
+                raise RuntimeError("Weights & Biases is not installed. Run `pip install wandb` or disable --use-wandb.") from exc
+            wandb_project = args.wandb_project or "prediction_with_action"
+            run_name = args.wandb_run_name or f"{model_string_name}-{experiment_index:03d}"
+            wandb_run = wandb.init(
+                project=wandb_project,
+                name=run_name,
+                config=vars(args),
+            )
 
     # Create model:
     assert args.image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
@@ -433,6 +277,16 @@ def main(args):
                 avg_loss_d = avg_loss_d.item()
                 if accelerator.is_main_process:
                     logger.info(f"(step={train_steps:07d}) Train Loss image: {avg_loss:.6f}, Train Loss action:{avg_loss_a:.6f}, Train Loss depth:{avg_loss_d:.6f}, Train Steps/Sec: {steps_per_sec:.2f}")
+                    if args.use_wandb:
+                        log_payload = {
+                            "train/loss_image": avg_loss,
+                            "train/steps_per_sec": steps_per_sec,
+                        }
+                        if args.action_steps > 0:
+                            log_payload["train/loss_action"] = avg_loss_a
+                        if args.use_depth:
+                            log_payload["train/loss_depth"] = avg_loss_d
+                        wandb.log(log_payload, step=train_steps)
                 # Reset monitoring variables:
                 running_loss, running_loss_a, running_loss_d = 0, 0, 0
                 log_steps = 0
@@ -465,21 +319,36 @@ def main(args):
                     else:
                         img_samples = samples
                     img_mse_error = torch.nn.functional.mse_loss(target_img, img_samples)
-                    logger.info(f"(step={train_steps:07d}) Train img mse: {img_mse_error:.6f}")
+                    img_mse_value = img_mse_error.detach().item()
+                    logger.info(f"(step={train_steps:07d}) Train img mse: {img_mse_value:.6f}")
                     if args.use_depth:
                         depth_mse_error = torch.nn.functional.mse_loss(target_depth, depth_samples)
-                        logger.info(f"(step={train_steps:07d}) Train depth mse: {depth_mse_error:.6f}")
+                        depth_mse_value = depth_mse_error.detach().item()
+                        logger.info(f"(step={train_steps:07d}) Train depth mse: {depth_mse_value:.6f}")
+                    else:
+                        depth_mse_value = None
                     if args.action_steps>0:
                         action_mse_error = torch.nn.functional.mse_loss(rela_action, action_samples)
-                        logger.info(f"(step={train_steps:07d}) Train action mse: {action_mse_error:.6f}")
-                        if action_mse_error < best_action_loss:
-                            best_action_loss = action_mse_error
+                        action_mse_value = action_mse_error.detach().item()
+                        logger.info(f"(step={train_steps:07d}) Train action mse: {action_mse_value:.6f}")
+                        if action_mse_value < best_action_loss:
+                            best_action_loss = action_mse_value
                             checkpoint_path = f"{checkpoint_dir}/best_action_loss.pt"
                             torch.save({
                                 "model": model.module.state_dict() if accelerator.num_processes > 1 else model.state_dict(),
                                 "args": args
                             }, checkpoint_path)
                             logger.info(f"Saved checkpoint to {checkpoint_path}")
+                    else:
+                        action_mse_value = None
+                    if args.use_wandb:
+                        eval_log = {"eval/loss_image": img_mse_value}
+                        if depth_mse_value is not None:
+                            eval_log["eval/loss_depth"] = depth_mse_value
+                        if action_mse_value is not None:
+                            eval_log["eval/loss_action"] = action_mse_value
+                            eval_log["eval/best_action_loss"] = best_action_loss
+                        wandb.log(eval_log, step=train_steps)
                     #img_samples = img_samples.reshape((N,pred_lens,-1,img_samples.shape[2],img_samples.shape[3]))
                     #depth_samples = depth_samples.reshape((N, pred_lens, -1, depth_samples.shape[2], depth_samples.shape[3]))
                     img_save_path = os.path.join(eval_dir, 'step_' + str(train_steps))
@@ -531,62 +400,94 @@ def main(args):
 
     if accelerator.is_main_process:
         logger.info("Done!")
+        if args.use_wandb:
+            wandb.finish()
 
 
 if __name__ == "__main__":
-    # Default args here will train DiT-XL/2 with the hyperparameters we used in our paper (except training iters).
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--feature-path", type=str, default="features")
-    parser.add_argument("--results-dir", type=str, default="results")
-    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-XL/2")
-    parser.add_argument("--image-size", type=int, choices=[256, 512], default=256)
-    parser.add_argument("--num-classes", type=int, default=1000)
-    parser.add_argument("--epochs", type=int, default=1400)
-    parser.add_argument("--global-batch-size", type=int, default=256)
-    parser.add_argument("--global-seed", type=int, default=0)
-    parser.add_argument("--vae", type=str, choices=["ema", "mse"], default="ema")  # Choice doesn't affect training
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--log-every", type=int, default=100)
-    parser.add_argument("--ckpt-every", type=int, default=30_000)
-    parser.add_argument("--eval_every", type=int, default=5000)
-    parser.add_argument("--ckpt_wrapper", action="store_true") # ckpt_wrapper for save memory
-    parser.add_argument("--without_ema", action="store_true")
-
-    # initilization
-    parser.add_argument("--dit_init", type=str, default=None)
-    parser.add_argument("--rgb_init", type=str, default=None)
-
-    # attn_mask
-    parser.add_argument("--attn_mask", action="store_true")
-    # predict_horizon
-    parser.add_argument("--predict_horizon", type=int, default=1)
-    # skip_step
-    parser.add_argument("--skip_step", type=int, default=4)
-
-    # text
-    parser.add_argument("--dynamics", action="store_true")
-    parser.add_argument("--text_cond", action="store_true")
-    parser.add_argument("--clip_path", type=str, default="/home/gyj/llm/clip-vit-base-patch32")
-    parser.add_argument("--text_emb_size", type=int, default=512)
+    # Create argument parser with config file support
+    parser = argparse.ArgumentParser(description="Train DiT model with config file support")
     
-    # depth
-    parser.add_argument("--use_depth", action="store_true")
-    parser.add_argument("--d_hidden_size", type=int, default=32)
-    parser.add_argument("--d_patch_size", type=int, default=8)
-    parser.add_argument("--depth_filter", action="store_true")
-
-    # action
-    parser.add_argument("--learnable_action_pos", action="store_true")
-    parser.add_argument("--action_steps", type=int, default=0)
-    parser.add_argument("--action_dim", type=int, default=7)
-    parser.add_argument("--action_scale", type=float, default=10)
-    parser.add_argument("--absolute_action", action="store_true")
-    parser.add_argument("--action_condition", action="store_true")
-
-    # action_loss_start
-    parser.add_argument("--action_loss_lambda", type=float, default=1.0)
-    parser.add_argument("--action_loss_start", type=int, default=50000)
-
+    # Config file argument
+    parser.add_argument("--config", type=str, default="default.yaml", 
+                       help="Path to YAML config file (default: configs/default.yaml)")
     
-    args = parser.parse_args()
+    # All other arguments (these can override config file values)
+    parser.add_argument("--feature-path", type=str, help="Path to training data features")
+    parser.add_argument("--results-dir", type=str, help="Directory to save checkpoints and logs")
+    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), help="Model architecture")
+    parser.add_argument("--image-size", type=int, choices=[256, 512], help="Image size (must be divisible by 8)")
+    parser.add_argument("--num-classes", type=int, help="Number of classes for classifier-free guidance")
+    parser.add_argument("--epochs", type=int, help="Total training epochs")
+    parser.add_argument("--global-batch-size", type=int, help="Total batch size across all GPUs")
+    parser.add_argument("--global-seed", type=int, help="Random seed for reproducibility")
+    parser.add_argument("--vae", type=str, choices=["ema", "mse"], help="VAE model type")
+    parser.add_argument("--num-workers", type=int, help="Number of data loader workers")
+    parser.add_argument("--log-every", type=int, help="Log training status every N steps")
+    parser.add_argument("--ckpt-every", type=int, help="Save checkpoint every N steps")
+    parser.add_argument("--eval-every", type=int, help="Evaluate model every N steps")
+    parser.add_argument("--ckpt-wrapper", action="store_true", help="Wrapper for saving memory")
+    parser.add_argument("--without-ema", action="store_true", help="Disable Exponential Moving Average")
+
+    # Initialization
+    parser.add_argument("--dit-init", type=str, help="Path to pretrained DiT weights")
+    parser.add_argument("--rgb-init", type=str, help="Path to pretrained model for RGB components")
+
+    # Model components
+    parser.add_argument("--attn-mask", action="store_true", help="Use attention mask")
+    parser.add_argument("--predict-horizon", type=int, help="Number of future frames to predict")
+    parser.add_argument("--skip-step", type=int, help="Steps to skip between frames")
+
+    # Text conditioning
+    parser.add_argument("--dynamics", action="store_true", help="Enable dynamics modeling")
+    parser.add_argument("--text-cond", action="store_true", help="Enable text conditioning")
+    parser.add_argument("--clip-path", type=str, help="Path to CLIP model")
+    parser.add_argument("--text-emb-size", type=int, help="Dimension of text embeddings")
+    
+    # Depth conditioning
+    parser.add_argument("--use-depth", action="store_true", help="Enable depth conditioning")
+    parser.add_argument("--d-hidden-size", type=int, help="Hidden size for depth encoder")
+    parser.add_argument("--d-patch-size", type=int, help="Patch size for depth encoder")
+    parser.add_argument("--depth-filter", action="store_true", help="Apply filter to depth images")
+
+    # Action conditioning
+    parser.add_argument("--learnable-action-pos", action="store_true", help="Use learnable positional embeddings for actions")
+    parser.add_argument("--action-steps", type=int, help="Number of action steps to predict/condition on")
+    parser.add_argument("--action-dim", type=int, help="Dimension of the action space")
+    parser.add_argument("--action-scale", type=float, help="Scaling factor for actions")
+    parser.add_argument("--absolute-action", action="store_true", help="Use absolute actions instead of relative")
+    parser.add_argument("--action-condition", action="store_true", help="Condition on the current action/pose")
+
+    # Loss configuration
+    parser.add_argument("--action-loss-lambda", type=float, help="Weight for the action prediction loss")
+    parser.add_argument("--action-loss-start", type=int, help="Step to start applying action loss")
+    
+    # Wandb logging
+    parser.add_argument("--use-wandb", action="store_true", help="Enable Weights & Biases logging")
+    parser.add_argument("--wandb-project", type=str, help="Wandb project name")
+    parser.add_argument("--wandb-run-name", type=str, help="Wandb run name")
+
+    # Parse command line arguments
+    cli_args = parser.parse_args()
+    
+    # Load configuration from YAML file and merge with CLI args
+    try:
+        args = load_config(cli_args.config, "configs", cli_args)
+        print(f"✓ Loaded configuration from: configs/{cli_args.config}")
+    except FileNotFoundError:
+        print(f"⚠ Config file not found: configs/{cli_args.config}")
+        print("Using default configuration...")
+        args = load_config("default.yaml", "configs")
+    except Exception as e:
+        print(f"✗ Error loading config: {e}")
+        print("Falling back to command line arguments only...")
+        args = cli_args
+    
+    # Convert dashes to underscores for compatibility
+    for attr_name in dir(args):
+        if '-' in attr_name and not attr_name.startswith('_'):
+            new_name = attr_name.replace('-', '_')
+            if not hasattr(args, new_name):
+                setattr(args, new_name, getattr(args, attr_name))
+    
     main(args)

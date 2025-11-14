@@ -1,0 +1,86 @@
+# Configuration for Co-training with Video Data
+# This config enables co-training with both robot and video data
+
+# ======================================================
+#               General Training Settings
+# ======================================================
+training:
+  # Paths
+  feature_path: "robot_features"
+  video_path: "video_features"  # Enable video co-training
+  results_dir: "results_cotrain"
+
+  # Model
+  model: "DiT-XL/2"
+  image_size: 256
+  num_classes: 1000
+  predict_horizon: 3
+  skip_step: 6  # Different skip for video data
+
+  # Training Loop
+  epochs: 1000
+  global_batch_size: 192
+  global_seed: 0
+  num_workers: 6
+  without_ema: false
+
+  # Logging and Checkpointing
+  log_every: 100
+  eval_every: 3000
+  ckpt_every: 15000
+  ckpt_wrapper: false
+
+  # Resuming Training
+  resume: null
+  auto_resume: false
+
+# ======================================================
+#                 Component Settings
+# ======================================================
+components:
+  # VAE
+  vae: "ema"
+
+  # Initialization
+  dit_init: null
+  rgb_init: null
+
+  # Attention
+  attn_mask: false
+
+  # Text Conditioning
+  text_cond: true
+  clip_path: "/home/syr/code/models/clip-vit-base-patch32"
+  text_emb_size: 512
+
+  # Depth Conditioning
+  use_depth: true
+  d_hidden_size: 32
+  d_patch_size: 8
+  depth_filter: false
+
+  # Action Conditioning
+  action_steps: 1
+  action_dim: 7
+  action_scale: 10.0
+  absolute_action: false
+  action_condition: true
+  learnable_action_pos: false
+
+  # Loss Configuration
+  action_loss_lambda: 1.0
+  action_loss_start: 0  # Start immediately for co-training
+
+# ======================================================
+#                  MoE Settings
+# ======================================================
+moe:
+  use_moe: false
+
+# ======================================================
+#                  WandB Logging
+# ======================================================
+wandb:
+  use_wandb: true
+  wandb_project: "cotrain-dit"
+  wandb_run_name: "robot_video_cotrain"

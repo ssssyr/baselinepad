@@ -1,0 +1,86 @@
+# Configuration for Action Prediction Training
+# This config enables action prediction with depth conditioning
+
+# ======================================================
+#               General Training Settings
+# ======================================================
+training:
+  # Paths
+  feature_path: "features" 
+  video_path: null
+  results_dir: "results_action"
+
+  # Model
+  model: "DiT-XL/2"
+  image_size: 256
+  num_classes: 1000
+  predict_horizon: 4  # Predict 4 future frames
+  skip_step: 2        # Skip 2 steps between frames
+
+  # Training Loop
+  epochs: 800
+  global_batch_size: 128  # Smaller batch for action training
+  global_seed: 42
+  num_workers: 8
+  without_ema: false
+
+  # Logging and Checkpointing
+  log_every: 50
+  eval_every: 2000
+  ckpt_every: 10000
+  ckpt_wrapper: false
+
+  # Resuming Training
+  resume: null
+  auto_resume: true  # Auto-resume from latest checkpoint
+
+# ======================================================
+#                 Component Settings
+# ======================================================
+components:
+  # VAE
+  vae: "mse"
+
+  # Initialization
+  dit_init: null
+  rgb_init: "/path/to/pretrained/rgb_model.pt"  # Use pretrained RGB model
+
+  # Attention
+  attn_mask: true
+
+  # Text Conditioning
+  text_cond: true
+  clip_path: "/home/syr/code/models/clip-vit-base-patch32"
+  text_emb_size: 512
+
+  # Depth Conditioning - ENABLED
+  use_depth: true
+  d_hidden_size: 64
+  d_patch_size: 4
+  depth_filter: true
+
+  # Action Conditioning - ENABLED
+  action_steps: 4      # Predict 4 action steps
+  action_dim: 7        # 7-DOF robot arm
+  action_scale: 5.0    # Smaller scale for better training
+  absolute_action: false
+  action_condition: true
+  learnable_action_pos: true
+
+  # Loss Configuration
+  action_loss_lambda: 2.0    # Higher weight for action loss
+  action_loss_start: 1000    # Start action loss early
+
+# ======================================================
+#                  MoE Settings
+# ======================================================
+moe:
+  use_moe: false
+
+# ======================================================
+#                  WandB Logging
+# ======================================================
+wandb:
+  use_wandb: true
+  wandb_project: "action-prediction-dit"
+  wandb_run_name: "action_pred_depth_enabled"
