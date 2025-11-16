@@ -256,7 +256,7 @@ def main(args):
 
     # ==== Load and adapt pretrained weights (rgb_init) if provided ====
     if args.rgb_init is not None:
-        checkpoint = torch.load(args.rgb_init, map_location='cpu')
+        checkpoint = torch.load(args.rgb_init, map_location='cpu', weights_only=False)
         state_dict = checkpoint['model'] if isinstance(checkpoint, dict) and 'model' in checkpoint else checkpoint
 
         # 1) Adapt input conv for horizon change (channel blocks)
