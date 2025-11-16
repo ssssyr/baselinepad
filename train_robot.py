@@ -36,7 +36,7 @@ from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
 
 # dataset
-from dataset import RobotDataset
+from datasets.dataset import RobotDataset
 
 
 #################################################################################

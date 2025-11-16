@@ -90,13 +90,17 @@ fi
 echo "✅ All checks passed!"
 echo "================================================================"
 
-# 10. Change to correct directory
+# 10. Change to correct directory and set Python path
 SCRIPT_DIR="/home/ct_24210860031/812code/SYR/baselinepad"
 echo "📁 Changing to script directory: $SCRIPT_DIR"
 cd "$SCRIPT_DIR" || {
     echo "❌ ERROR: Cannot change to script directory $SCRIPT_DIR"
     exit 1
 }
+
+# Add current directory to Python path for relative imports
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+echo "🐍 Python path set to: $PYTHONPATH"
 
 # 11. Launch Training
 echo "🚀 Launching training..."
