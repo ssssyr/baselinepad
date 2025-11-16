@@ -21,7 +21,7 @@ echo "🔌 Master Port: $MASTER_PORT"
 
 # 3. Training Configuration
 TRAIN_SCRIPT="train_robot.py"
-CONFIG_FILE="configs/metaworld_4d.yaml"
+CONFIG_FILE="metaworld_4d.yaml"
 
 # 4. Batch Configuration (optimized for 4x A100 with limited data)
 PER_GPU_BATCH_SIZE=16
