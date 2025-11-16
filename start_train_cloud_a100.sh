@@ -90,7 +90,15 @@ fi
 echo "✅ All checks passed!"
 echo "================================================================"
 
-# 10. Launch Training
+# 10. Change to correct directory
+SCRIPT_DIR="/home/ct_24210860031/812code/SYR/baselinepad"
+echo "📁 Changing to script directory: $SCRIPT_DIR"
+cd "$SCRIPT_DIR" || {
+    echo "❌ ERROR: Cannot change to script directory $SCRIPT_DIR"
+    exit 1
+}
+
+# 11. Launch Training
 echo "🚀 Launching training..."
 echo "Command: torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT $TRAIN_SCRIPT --config $CONFIG_FILE"
 
