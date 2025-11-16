@@ -1,0 +1,110 @@
+# Configuration for MetaWorld 4-DOF action space with action prediction enabled
+# Complete standalone configuration file
+
+# ======================================================
+#               General Training Settings
+# ======================================================
+training:
+  # Paths
+  feature_path: "/home/ct_24210860031/812datasets/SYR/feature_complete"  # Path to MetaWorld data
+  video_path: null
+  results_dir: "results_metaworld_4d"
+
+  # Model
+  model: "DiT-XL/2"
+  image_size: 256
+  num_classes: 1000
+  predict_horizon: 3    # Number of future frames to predict
+  skip_step: 4          # Steps to skip between frames
+
+  # Training Loop
+  epochs: 1000
+  global_batch_size: 128
+  global_seed: 42
+  num_workers: 8
+  without_ema: false
+  
+  # Optimizer Settings
+  learning_rate: 1e-5   # Learning rate for AdamW optimizer
+  weight_decay: 0.0     # Weight decay for AdamW optimizer
+  adam_beta1: 0.9       # AdamW beta1 parameter
+  adam_beta2: 0.999     # AdamW beta2 parameter
+
+  # Logging and Checkpointing
+  log_every: 100
+  eval_every: 2000
+  ckpt_every: 10000
+  ckpt_wrapper: false
+
+  # Resuming Training
+  resume: null
+  auto_resume: true
+
+# ======================================================
+#                 Component Settings
+# ======================================================
+components:
+  # VAE
+  vae: "ema"
+  vae_path: "/home/ct_24210860031/812code/SYR/models/sd-vae-ft-mse"  # Path to VAE model directory
+
+  # Initialization
+  dit_init: null
+  rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt"
+
+  # Attention
+  attn_mask: false
+
+  # Dynamics - Enable for MetaWorld
+  dynamics: true
+
+  # Text Conditioning - Enable for MetaWorld task instructions
+  text_cond: true
+  clip_path: "/home/ct_24210860031/812code/SYR/models/clip-vit-base-patch32"
+  text_emb_size: 512
+
+  # Depth Conditioning - Disable for MetaWorld
+  use_depth: false
+  d_hidden_size: 32
+  d_patch_size: 8
+  depth_filter: false
+
+  # Action Conditioning - ENABLED for MetaWorld 4-DOF action prediction
+  action_steps: 3           # Number of action steps to predict/condition on
+  action_dim: 4             # 4-DOF action space for MetaWorld
+  action_scale: 10.0        # Scaling factor for actions
+  absolute_action: true     # Use absolute actions instead of relative
+  action_condition: true    # Enable action conditioning
+  learnable_action_pos: true # Use learnable positional embeddings for actions
+
+  # Loss Configuration
+  action_loss_lambda: 1.0   # Weight for the action prediction loss
+  action_loss_start: 5000  # Step to start applying action loss
+
+# ======================================================
+#                  MoE Settings
+# ======================================================
+moe:
+  use_moe: false            # Disable Mixture of Experts
+  num_experts: 8
+  moe_top_k: 2
+  aux_loss_weight: 0.01
+  router_z_loss_weight: 0.001
+
+# ======================================================
+#                  WandB Logging
+# ======================================================
+wandb:
+  use_wandb: true
+  wandb_project: "metaworld-action-prediction"
+  wandb_run_name: "metaworld_4d_action_pred"
+
+# ======================================================
+#               MetaWorld Environment Settings
+# ======================================================
+metaworld:
+  task_names: ["button-press-v2"]  # MetaWorld tasks
+  data_path: "/home/ct_24210860031/812datasets/SYR/metaworld_raw"  # Path to original MetaWorld data (if available)
+  image_size: 256  # Image resolution for MetaWorld
+  use_depth: false  # Disable depth for MetaWorld
+  camera_name: "corner2"  # Camera view for MetaWorld

@@ -14,19 +14,19 @@ MASTER_PORT=${PORT:-$(shuf -i 29500-49151 -n 1)}
 
 # 3. Training Configuration
 TRAIN_SCRIPT="train_robot.py"
-# This script assumes you are training the vision-only model.
-CONFIG_FILE="bridge_vision.yaml"
+# This script assumes you are training the MetaWorld action prediction model.
+CONFIG_FILE="metaworld_4d.yaml"
 
 # 4. Batch Size
 # Set per-GPU batch size. Total batch size will be (BATCH_SIZE * NUM_GPUS).
-# For 4x A100s, a batch size of 128 per GPU (512 total) is a good starting point.
+# For MetaWorld with limited data, use smaller batch size.
 # If you encounter Out-Of-Memory errors, reduce this value.
-BATCH_SIZE=64
+BATCH_SIZE=8
 
 # 5. WandB Parameters (Optional, but recommended)
-WANDB_PROJECT="bridge_pretraining_multigpu"
+WANDB_PROJECT="metaworld_action_prediction_multigpu"
 # Generates a unique run name with a timestamp.
-WANDB_RUN_NAME="4xA100-total_bs512-run_$(date +%Y%m%d_%H%M%S)"
+WANDB_RUN_NAME="4xGPU-metaworld-action-prediction-bs$(($BATCH_SIZE * $NUM_GPUS))-run_$(date +%Y%m%d_%H%M%S)"
 
 # --- DO NOT EDIT BELOW THIS LINE ---
 
