@@ -1,0 +1,63 @@
+/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py:259: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.rgb_init, map_location='cpu')
+✓ Successfully loaded & adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+Missing keys after load (ok if due to config changes): 7
+[[34m2025-11-16 22:53:29[0m] DiT Parameters: 677,401,464
+length of dataset 2629
+[[34m2025-11-16 22:53:29[0m] Global batch size 64 num_processes (4)
+[[34m2025-11-16 22:53:29[0m] Dataset contains 2,629 images (/home/ct_24210860031/812datasets/SYR/feature_complete)
+[[34m2025-11-16 22:53:31[0m] Training for 1000 epochs...
+[[34m2025-11-16 22:53:31[0m] Beginning epoch 0...
+Traceback (most recent call last):
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 663, in <module>
+    main(args)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 344, in main
+    for x_cond, x, depth_cond, depth, action_cond, action, y in loader:
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/accelerate/data_loader.py", line 567, in __iter__
+    current_batch = next(dataloader_iter)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+    data = self._next_data()
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/dataloader.py", line 1344, in _next_data
+    return self._process_data(data)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/dataloader.py", line 1370, in _process_data
+    data.reraise()
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/_utils.py", line 706, in reraise
+    raise exception
+IndexError: Caught IndexError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/_utils/worker.py", line 309, in _worker_loop
+    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/_utils/fetch.py", line 52, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/ct_24210860031/812code/SYR/baselinepad/datasets/dataset.py", line 393, in __getitem__
+    cond_action = np.array(self.cond_action[idx]).reshape(1,-1)*self.args.action_scale
+IndexError: list index out of range
+
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 663, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 344, in main
+[rank0]:     for x_cond, x, depth_cond, depth, action_cond, action, y in loader:
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/accelerate/data_loader.py", line 567, in __iter__
+[rank0]:     current_batch = next(dataloader_iter)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+[rank0]:     data = self._next_data()
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/dataloader.py", line 1344, in _next_data
+[rank0]:     return self._process_data(data)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/dataloader.py", line 1370, in _process_data
+[rank0]:     data.reraise()
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/_utils.py", line 706, in reraise
+[rank0]:     raise exception
+[rank0]: IndexError: Caught IndexError in DataLoader worker process 0.
+[rank0]: Original Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/_utils/worker.py", line 309, in _worker_loop
+[rank0]:     data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+[rank0]:     data = [self.dataset[idx] for idx in possibly_batched_index]
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/data/_utils/fetch.py", line 52, in <listcomp>
+[rank0]:     data = [self.dataset[idx] for idx in possibly_batched_index]
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/datasets/dataset.py", line 393, in __getitem__
+[rank0]:     cond_action = np.array(self.cond_action[idx]).reshape(1,-1)*self.args.action_scale
+[rank0]: IndexError: list index out of range

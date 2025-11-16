@@ -1,0 +1,29 @@
+/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py:259: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.rgb_init, map_location='cpu')
+✓ Successfully loaded & adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+[[34m2025-11-14 20:59:15[0m] DiT Parameters: 674,696,544
+length of dataset 813749
+[[34m2025-11-14 20:59:31[0m] Global batch size 256 num_processes (4)
+[[34m2025-11-14 20:59:31[0m] Dataset contains 813,749 images (/home/ct_24210860031/812datasets/SYR/bridge_features)
+[[34m2025-11-14 20:59:34[0m] Training for 1000 epochs...
+[[34m2025-11-14 20:59:34[0m] Beginning epoch 0...
+Traceback (most recent call last):
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 656, in <module>
+    main(args)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 390, in main
+    loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+    return super().training_losses(self._wrap_model(model), *args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 788, in training_losses
+    noise_a = th.randn_like(a_start)
+TypeError: randn_like(): argument 'input' (position 1) must be Tensor, not NoneType
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 656, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 390, in main
+[rank0]:     loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+[rank0]:     return super().training_losses(self._wrap_model(model), *args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 788, in training_losses
+[rank0]:     noise_a = th.randn_like(a_start)
+[rank0]: TypeError: randn_like(): argument 'input' (position 1) must be Tensor, not NoneType

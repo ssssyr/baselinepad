@@ -1,0 +1,21 @@
+2025-11-14 12:25:45,696 INFO    MainThread:13273 [wandb_setup.py:_flush():81] Current SDK version is 0.22.3
+2025-11-14 12:25:45,696 INFO    MainThread:13273 [wandb_setup.py:_flush():81] Configure stats pid to 13273
+2025-11-14 12:25:45,696 INFO    MainThread:13273 [wandb_setup.py:_flush():81] Loading settings from /home/ct_24210860031/.config/wandb/settings
+2025-11-14 12:25:45,696 INFO    MainThread:13273 [wandb_setup.py:_flush():81] Loading settings from /home/ct_24210860031/812code/SYR/baselinepad/wandb/settings
+2025-11-14 12:25:45,696 INFO    MainThread:13273 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2025-11-14 12:25:45,696 INFO    MainThread:13273 [wandb_init.py:setup_run_log_directory():706] Logging user logs to /home/ct_24210860031/812code/SYR/baselinepad/wandb/run-20251114_122545-654l60ro/logs/debug.log
+2025-11-14 12:25:45,696 INFO    MainThread:13273 [wandb_init.py:setup_run_log_directory():707] Logging internal logs to /home/ct_24210860031/812code/SYR/baselinepad/wandb/run-20251114_122545-654l60ro/logs/debug-internal.log
+2025-11-14 12:25:45,696 INFO    MainThread:13273 [wandb_init.py:init():833] calling init triggers
+2025-11-14 12:25:45,696 INFO    MainThread:13273 [wandb_init.py:init():838] wandb.init called with sweep_config: {}
+config: {'feature_path': '/home/ct_24210860031/812datasets/SYR/bridge_features', 'video_path': None, 'results_dir': 'results_bridge_vision', 'model': 'DiT-XL/2', 'image_size': 256, 'num_classes': 1000, 'predict_horizon': 3, 'skip_step': 4, 'epochs': 1000, 'global_batch_size': 512, 'global_seed': 42, 'num_workers': 8, 'without_ema': False, 'learning_rate': '1e-4', 'weight_decay': 0.0, 'adam_beta1': 0.9, 'adam_beta2': 0.999, 'log_every': 100, 'eval_every': 2000, 'ckpt_every': 10000, 'ckpt_wrapper': False, 'resume': None, 'auto_resume': True, 'vae': 'ema', 'vae_path': '/home/ct_24210860031/812code/SYR/models/sd-vae-ft-mse', 'dit_init': None, 'rgb_init': '/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt', 'attn_mask': False, 'text_cond': False, 'clip_path': '/home/ct_24210860031/812code/SYR/models/clip-vit-base-patch32', 'text_emb_size': 512, 'use_depth': False, 'd_hidden_size': 32, 'd_patch_size': 8, 'depth_filter': False, 'action_steps': 0, 'action_dim': 7, 'action_scale': 10.0, 'absolute_action': False, 'action_condition': False, 'learnable_action_pos': False, 'action_loss_lambda': 0.0, 'action_loss_start': 0, 'use_moe': False, 'use_wandb': True, 'wandb_project': 'bridge_pretraining_multigpu', 'wandb_run_name': '4xA100-total_bs512-run_20251114_122529', 'config': 'bridge_vision.yaml', 'dynamics': False, '_wandb': {}}
+2025-11-14 12:25:45,696 INFO    MainThread:13273 [wandb_init.py:init():881] starting backend
+2025-11-14 12:25:45,902 INFO    MainThread:13273 [wandb_init.py:init():884] sending inform_init request
+2025-11-14 12:25:45,905 INFO    MainThread:13273 [wandb_init.py:init():892] backend started and connected
+2025-11-14 12:25:45,906 INFO    MainThread:13273 [wandb_init.py:init():962] updated telemetry
+2025-11-14 12:25:45,910 INFO    MainThread:13273 [wandb_init.py:init():986] communicating run to backend with 90.0 second timeout
+2025-11-14 12:25:47,751 INFO    MainThread:13273 [wandb_init.py:init():1033] starting run threads in backend
+2025-11-14 12:25:47,841 INFO    MainThread:13273 [wandb_run.py:_console_start():2506] atexit reg
+2025-11-14 12:25:47,842 INFO    MainThread:13273 [wandb_run.py:_redirect():2354] redirect: wrap_raw
+2025-11-14 12:25:47,842 INFO    MainThread:13273 [wandb_run.py:_redirect():2423] Wrapping output streams.
+2025-11-14 12:25:47,842 INFO    MainThread:13273 [wandb_run.py:_redirect():2446] Redirects installed.
+2025-11-14 12:25:47,844 INFO    MainThread:13273 [wandb_init.py:init():1073] run started, returning control to user process

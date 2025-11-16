@@ -1,0 +1,26 @@
+/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py:155: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.rgb_init, map_location='cpu')
+Adapting x_embedder: torch.Size([1152, 16, 2, 2]) -> torch.Size([1152, 4, 2, 2])
+✓ Adapted x_embedder for channel mismatch
+Adapting final_layer: torch.Size([96, 1152]) -> torch.Size([32, 1152])
+✓ Re-initialized final_layer for output dimension mismatch
+✓ Successfully loaded and adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+✓ Re-initialized y_embedder for class-only guidance.
+[[34m2025-11-14 13:31:58[0m] DiT Parameters: 675,129,632
+length of dataset 813749
+[[34m2025-11-14 13:32:16[0m] Global batch size 512 num_processes (4)
+[[34m2025-11-14 13:32:16[0m] Dataset contains 813,749 images (/home/ct_24210860031/812datasets/SYR/bridge_features)
+[[34m2025-11-14 13:32:18[0m] Training for 1000 epochs...
+[[34m2025-11-14 13:32:18[0m] Beginning epoch 0...
+Traceback (most recent call last):
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 558, in <module>
+    main(args)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 275, in main
+    raise NotImplementedError
+NotImplementedError
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 558, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 275, in main
+[rank0]:     raise NotImplementedError
+[rank0]: NotImplementedError

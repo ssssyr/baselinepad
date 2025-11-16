@@ -1,0 +1,210 @@
+/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py:259: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.rgb_init, map_location='cpu')
+✓ Successfully loaded & adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+[[34m2025-11-14 21:35:25[0m] DiT Parameters: 674,696,544
+length of dataset 813749
+[[34m2025-11-14 21:35:42[0m] Global batch size 256 num_processes (4)
+[[34m2025-11-14 21:35:42[0m] Dataset contains 813,749 images (/home/ct_24210860031/812datasets/SYR/bridge_features)
+[[34m2025-11-14 21:35:45[0m] Training for 1000 epochs...
+[[34m2025-11-14 21:35:45[0m] Beginning epoch 0...
+[[34m2025-11-14 21:37:08[0m] (step=0000100) Train Loss image: 0.052871, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.21
+[[34m2025-11-14 21:38:24[0m] (step=0000200) Train Loss image: 0.050709, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:39:41[0m] (step=0000300) Train Loss image: 0.048555, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:40:58[0m] (step=0000400) Train Loss image: 0.045588, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:42:15[0m] (step=0000500) Train Loss image: 0.048083, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:43:32[0m] (step=0000600) Train Loss image: 0.045108, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:44:48[0m] (step=0000700) Train Loss image: 0.044758, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:46:05[0m] (step=0000800) Train Loss image: 0.047177, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:47:22[0m] (step=0000900) Train Loss image: 0.045878, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:48:39[0m] (step=0001000) Train Loss image: 0.044404, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:49:56[0m] (step=0001100) Train Loss image: 0.045531, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:51:12[0m] (step=0001200) Train Loss image: 0.050039, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:52:29[0m] (step=0001300) Train Loss image: 0.044197, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:53:46[0m] (step=0001400) Train Loss image: 0.044442, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:55:03[0m] (step=0001500) Train Loss image: 0.042331, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:56:20[0m] (step=0001600) Train Loss image: 0.043200, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:57:36[0m] (step=0001700) Train Loss image: 0.043730, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 21:58:53[0m] (step=0001800) Train Loss image: 0.041413, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:00:10[0m] (step=0001900) Train Loss image: 0.043534, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:01:27[0m] (step=0002000) Train Loss image: 0.040702, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:01:27[0m] start evaluating model
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 250/250 [00:55<00:00,  4.50it/s]
+[[34m2025-11-14 22:02:22[0m] (step=0002000) Train img mse: 0.237762
+[[34m2025-11-14 22:03:49[0m] (step=0002100) Train Loss image: 0.040532, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 0.70
+[[34m2025-11-14 22:05:05[0m] (step=0002200) Train Loss image: 0.040822, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:06:22[0m] (step=0002300) Train Loss image: 0.039780, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:07:39[0m] (step=0002400) Train Loss image: 0.042436, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:08:56[0m] (step=0002500) Train Loss image: 0.041445, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:10:13[0m] (step=0002600) Train Loss image: 0.041087, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:11:30[0m] (step=0002700) Train Loss image: 0.040914, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:12:46[0m] (step=0002800) Train Loss image: 0.041619, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:14:03[0m] (step=0002900) Train Loss image: 0.044326, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:15:20[0m] (step=0003000) Train Loss image: 0.041256, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:16:37[0m] (step=0003100) Train Loss image: 0.039747, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:17:37[0m] Beginning epoch 1...
+[[34m2025-11-14 22:17:55[0m] (step=0003200) Train Loss image: 0.041416, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.28
+[[34m2025-11-14 22:19:12[0m] (step=0003300) Train Loss image: 0.041742, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:20:29[0m] (step=0003400) Train Loss image: 0.043724, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:21:46[0m] (step=0003500) Train Loss image: 0.041623, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:23:03[0m] (step=0003600) Train Loss image: 0.040564, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:24:19[0m] (step=0003700) Train Loss image: 0.043513, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:25:36[0m] (step=0003800) Train Loss image: 0.041037, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:26:53[0m] (step=0003900) Train Loss image: 0.040731, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:28:10[0m] (step=0004000) Train Loss image: 0.042372, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:28:10[0m] start evaluating model
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 250/250 [00:55<00:00,  4.50it/s]
+[[34m2025-11-14 22:29:05[0m] (step=0004000) Train img mse: 0.242642
+[[34m2025-11-14 22:30:32[0m] (step=0004100) Train Loss image: 0.042879, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 0.70
+[[34m2025-11-14 22:31:48[0m] (step=0004200) Train Loss image: 0.041195, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.31
+[[34m2025-11-14 22:33:05[0m] (step=0004300) Train Loss image: 0.040996, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:34:22[0m] (step=0004400) Train Loss image: 0.042389, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:35:39[0m] (step=0004500) Train Loss image: 0.040823, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:36:56[0m] (step=0004600) Train Loss image: 0.039881, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:38:13[0m] (step=0004700) Train Loss image: 0.041016, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:39:30[0m] (step=0004800) Train Loss image: 0.044234, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:40:46[0m] (step=0004900) Train Loss image: 0.041164, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:42:03[0m] (step=0005000) Train Loss image: 0.042371, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:43:20[0m] (step=0005100) Train Loss image: 0.040652, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:44:37[0m] (step=0005200) Train Loss image: 0.041307, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:45:54[0m] (step=0005300) Train Loss image: 0.041079, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:47:10[0m] (step=0005400) Train Loss image: 0.041828, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:48:27[0m] (step=0005500) Train Loss image: 0.041976, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:49:44[0m] (step=0005600) Train Loss image: 0.040203, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:51:01[0m] (step=0005700) Train Loss image: 0.041329, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:52:18[0m] (step=0005800) Train Loss image: 0.041971, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:53:34[0m] (step=0005900) Train Loss image: 0.042072, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:54:51[0m] (step=0006000) Train Loss image: 0.037124, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:54:51[0m] start evaluating model
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 250/250 [00:55<00:00,  4.50it/s]
+[[34m2025-11-14 22:55:47[0m] (step=0006000) Train img mse: 0.229744
+[[34m2025-11-14 22:57:13[0m] (step=0006100) Train Loss image: 0.039833, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 0.70
+[[34m2025-11-14 22:58:30[0m] (step=0006200) Train Loss image: 0.039612, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 22:59:47[0m] (step=0006300) Train Loss image: 0.041836, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:00:30[0m] Beginning epoch 2...
+[[34m2025-11-14 23:01:05[0m] (step=0006400) Train Loss image: 0.041214, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.28
+[[34m2025-11-14 23:02:22[0m] (step=0006500) Train Loss image: 0.039505, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:03:39[0m] (step=0006600) Train Loss image: 0.038250, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:04:56[0m] (step=0006700) Train Loss image: 0.040145, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:06:12[0m] (step=0006800) Train Loss image: 0.042350, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:07:29[0m] (step=0006900) Train Loss image: 0.039808, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:08:46[0m] (step=0007000) Train Loss image: 0.039761, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:10:03[0m] (step=0007100) Train Loss image: 0.042305, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:11:20[0m] (step=0007200) Train Loss image: 0.039454, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:12:36[0m] (step=0007300) Train Loss image: 0.042164, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:13:53[0m] (step=0007400) Train Loss image: 0.039136, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:15:10[0m] (step=0007500) Train Loss image: 0.039262, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:16:27[0m] (step=0007600) Train Loss image: 0.040634, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:17:44[0m] (step=0007700) Train Loss image: 0.039017, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:19:00[0m] (step=0007800) Train Loss image: 0.038323, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:20:17[0m] (step=0007900) Train Loss image: 0.038600, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:21:34[0m] (step=0008000) Train Loss image: 0.040182, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:21:34[0m] start evaluating model
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 250/250 [00:55<00:00,  4.50it/s]
+[[34m2025-11-14 23:22:30[0m] (step=0008000) Train img mse: 0.236702
+[[34m2025-11-14 23:23:56[0m] (step=0008100) Train Loss image: 0.041509, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 0.70
+[[34m2025-11-14 23:25:13[0m] (step=0008200) Train Loss image: 0.041324, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:26:30[0m] (step=0008300) Train Loss image: 0.039266, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:27:47[0m] (step=0008400) Train Loss image: 0.036628, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.29
+[[34m2025-11-14 23:29:04[0m] (step=0008500) Train Loss image: 0.040343, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:30:21[0m] (step=0008600) Train Loss image: 0.039976, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:31:38[0m] (step=0008700) Train Loss image: 0.041872, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:32:54[0m] (step=0008800) Train Loss image: 0.039170, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:34:11[0m] (step=0008900) Train Loss image: 0.040049, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:35:28[0m] (step=0009000) Train Loss image: 0.038962, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:36:45[0m] (step=0009100) Train Loss image: 0.038820, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:38:02[0m] (step=0009200) Train Loss image: 0.040024, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:39:19[0m] (step=0009300) Train Loss image: 0.037390, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:40:36[0m] (step=0009400) Train Loss image: 0.039242, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.28
+[[34m2025-11-14 23:41:53[0m] (step=0009500) Train Loss image: 0.041869, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:42:20[0m] Beginning epoch 3...
+[[34m2025-11-14 23:43:12[0m] (step=0009600) Train Loss image: 0.037998, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.28
+[[34m2025-11-14 23:44:28[0m] (step=0009700) Train Loss image: 0.037318, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:45:45[0m] (step=0009800) Train Loss image: 0.041338, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:47:02[0m] (step=0009900) Train Loss image: 0.039193, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:48:19[0m] (step=0010000) Train Loss image: 0.040115, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:48:19[0m] start evaluating model
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 250/250 [00:55<00:00,  4.50it/s]
+[[34m2025-11-14 23:49:14[0m] (step=0010000) Train img mse: 0.242794
+[[34m2025-11-14 23:49:26[0m] Saved checkpoint to results_bridge_vision/012-DiT-XL-2-2025-11-14-21-35-07/checkpoints/0010000.pt
+[[34m2025-11-14 23:50:42[0m] (step=0010100) Train Loss image: 0.038845, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 0.70
+[[34m2025-11-14 23:51:59[0m] (step=0010200) Train Loss image: 0.040369, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:53:16[0m] (step=0010300) Train Loss image: 0.039378, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:54:33[0m] (step=0010400) Train Loss image: 0.037363, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:55:50[0m] (step=0010500) Train Loss image: 0.039781, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:57:07[0m] (step=0010600) Train Loss image: 0.040384, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:58:24[0m] (step=0010700) Train Loss image: 0.039214, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-14 23:59:41[0m] (step=0010800) Train Loss image: 0.038658, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:00:57[0m] (step=0010900) Train Loss image: 0.038866, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:02:14[0m] (step=0011000) Train Loss image: 0.039499, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:03:31[0m] (step=0011100) Train Loss image: 0.038749, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:04:48[0m] (step=0011200) Train Loss image: 0.038661, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:06:05[0m] (step=0011300) Train Loss image: 0.039435, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:07:22[0m] (step=0011400) Train Loss image: 0.037399, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:08:38[0m] (step=0011500) Train Loss image: 0.039965, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:09:55[0m] (step=0011600) Train Loss image: 0.040008, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:11:12[0m] (step=0011700) Train Loss image: 0.038531, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:12:29[0m] (step=0011800) Train Loss image: 0.038536, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:13:46[0m] (step=0011900) Train Loss image: 0.037367, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:15:03[0m] (step=0012000) Train Loss image: 0.039841, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:15:03[0m] start evaluating model
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 250/250 [00:55<00:00,  4.50it/s]
+[[34m2025-11-15 00:15:58[0m] (step=0012000) Train img mse: 0.238885
+[[34m2025-11-15 00:17:25[0m] (step=0012100) Train Loss image: 0.040291, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 0.70
+[[34m2025-11-15 00:18:41[0m] (step=0012200) Train Loss image: 0.037560, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:19:58[0m] (step=0012300) Train Loss image: 0.035836, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:21:15[0m] (step=0012400) Train Loss image: 0.038808, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:22:32[0m] (step=0012500) Train Loss image: 0.039062, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:23:49[0m] (step=0012600) Train Loss image: 0.038394, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:25:06[0m] (step=0012700) Train Loss image: 0.041575, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:25:15[0m] Beginning epoch 4...
+[[34m2025-11-15 00:26:24[0m] (step=0012800) Train Loss image: 0.037985, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.27
+[[34m2025-11-15 00:27:41[0m] (step=0012900) Train Loss image: 0.038328, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:28:58[0m] (step=0013000) Train Loss image: 0.037778, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:30:15[0m] (step=0013100) Train Loss image: 0.036318, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:31:31[0m] (step=0013200) Train Loss image: 0.039260, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:32:48[0m] (step=0013300) Train Loss image: 0.037518, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:34:05[0m] (step=0013400) Train Loss image: 0.039105, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:35:22[0m] (step=0013500) Train Loss image: 0.038195, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:36:39[0m] (step=0013600) Train Loss image: 0.039128, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:37:56[0m] (step=0013700) Train Loss image: 0.038990, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:39:13[0m] (step=0013800) Train Loss image: 0.038391, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:40:29[0m] (step=0013900) Train Loss image: 0.039396, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:41:46[0m] (step=0014000) Train Loss image: 0.039685, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:41:46[0m] start evaluating model
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 250/250 [00:55<00:00,  4.50it/s]
+[[34m2025-11-15 00:42:42[0m] (step=0014000) Train img mse: 0.225091
+[[34m2025-11-15 00:44:08[0m] (step=0014100) Train Loss image: 0.040079, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 0.70
+[[34m2025-11-15 00:45:25[0m] (step=0014200) Train Loss image: 0.036326, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:46:42[0m] (step=0014300) Train Loss image: 0.037211, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:47:59[0m] (step=0014400) Train Loss image: 0.038721, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:49:15[0m] (step=0014500) Train Loss image: 0.039089, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:50:32[0m] (step=0014600) Train Loss image: 0.037719, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+[[34m2025-11-15 00:51:49[0m] (step=0014700) Train Loss image: 0.038386, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.30
+Traceback (most recent call last):
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 663, in <module>
+    main(args)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 402, in main
+    accelerator.backward(loss)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/accelerate/accelerator.py", line 2740, in backward
+    loss.backward(**kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/_tensor.py", line 521, in backward
+    torch.autograd.backward(
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/__init__.py", line 289, in backward
+    _engine_run_backward(
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+KeyboardInterrupt
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 663, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 402, in main
+[rank0]:     accelerator.backward(loss)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/accelerate/accelerator.py", line 2740, in backward
+[rank0]:     loss.backward(**kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/_tensor.py", line 521, in backward
+[rank0]:     torch.autograd.backward(
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/__init__.py", line 289, in backward
+[rank0]:     _engine_run_backward(
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+[rank0]:     return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[rank0]: KeyboardInterrupt

@@ -1,0 +1,97 @@
+/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py:155: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.rgb_init, map_location='cpu')
+✓ Successfully loaded and adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+[[34m2025-11-14 13:38:17[0m] DiT Parameters: 674,696,544
+length of dataset 813749
+[[34m2025-11-14 13:38:34[0m] Global batch size 512 num_processes (4)
+[[34m2025-11-14 13:38:34[0m] Dataset contains 813,749 images (/home/ct_24210860031/812datasets/SYR/bridge_features)
+[[34m2025-11-14 13:38:37[0m] Training for 1000 epochs...
+[[34m2025-11-14 13:38:37[0m] Beginning epoch 0...
+Traceback (most recent call last):
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 558, in <module>
+    main(args)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 304, in main
+    loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+    return super().training_losses(self._wrap_model(model), *args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 801, in training_losses
+    model_output = model(x_t, t, **model_kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 129, in __call__
+    return self.model(x, new_ts, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1636, in forward
+    else self._run_ddp_forward(*inputs, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1454, in _run_ddp_forward
+    return self.module(*inputs, **kwargs)  # type: ignore[index]
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 484, in forward
+    x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c) if self.args.ckpt_wrapper else block(x, c)   # (N, T, D)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 195, in forward
+    x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/timm/layers/mlp.py", line 49, in forward
+    x = self.act(x)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/activation.py", line 705, in forward
+    return F.gelu(input, approximate=self.approximate)
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 576.00 MiB. GPU 0 has a total capacity of 79.35 GiB of which 560.19 MiB is free. Process 121724 has 78.80 GiB memory in use. Of the allocated memory 74.91 GiB is allocated by PyTorch, and 1.31 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 558, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 304, in main
+[rank0]:     loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+[rank0]:     return super().training_losses(self._wrap_model(model), *args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 801, in training_losses
+[rank0]:     model_output = model(x_t, t, **model_kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 129, in __call__
+[rank0]:     return self.model(x, new_ts, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1636, in forward
+[rank0]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1454, in _run_ddp_forward
+[rank0]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 484, in forward
+[rank0]:     x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c) if self.args.ckpt_wrapper else block(x, c)   # (N, T, D)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 195, in forward
+[rank0]:     x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/timm/layers/mlp.py", line 49, in forward
+[rank0]:     x = self.act(x)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/activation.py", line 705, in forward
+[rank0]:     return F.gelu(input, approximate=self.approximate)
+[rank0]: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 576.00 MiB. GPU 0 has a total capacity of 79.35 GiB of which 560.19 MiB is free. Process 121724 has 78.80 GiB memory in use. Of the allocated memory 74.91 GiB is allocated by PyTorch, and 1.31 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

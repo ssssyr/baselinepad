@@ -1,0 +1,8 @@
+{"time":"2025-11-14T13:57:57.09860551+08:00","level":"INFO","msg":"stream: starting","core version":"0.22.3"}
+{"time":"2025-11-14T13:57:59.192021072+08:00","level":"INFO","msg":"stream: created new stream","id":"7l4vkoqs"}
+{"time":"2025-11-14T13:57:59.192109138+08:00","level":"INFO","msg":"handler: started","stream_id":"7l4vkoqs"}
+{"time":"2025-11-14T13:57:59.192265385+08:00","level":"INFO","msg":"stream: started","id":"7l4vkoqs"}
+{"time":"2025-11-14T13:57:59.19227902+08:00","level":"INFO","msg":"writer: started","stream_id":"7l4vkoqs"}
+{"time":"2025-11-14T13:57:59.192297173+08:00","level":"INFO","msg":"sender: started","stream_id":"7l4vkoqs"}
+{"time":"2025-11-14T20:18:51.524444473+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-11-14T20:19:17.490308655+08:00","level":"INFO","msg":"api: retrying HTTP error","status":502,"url":"https://api.wandb.ai/files/syr965948079-fudan-university-school-of-management/bridge_pretraining_multigpu/7l4vkoqs/file_stream","body":"\n<html><head>\n<meta http-equiv=\"content-type\" content=\"text/html;charset=utf-8\">\n<title>502 Server Error</title>\n</head>\n<body text=#000000 bgcolor=#ffffff>\n<h1>Error: Server Error</h1>\n<h2>The server encountered a temporary error and could not complete your request.<p>Please try again in 30 seconds.</h2>\n<h2></h2>\n</body></html>\n"}
