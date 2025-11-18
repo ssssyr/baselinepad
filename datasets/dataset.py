@@ -248,89 +248,117 @@ class RobotDataset(Dataset):
           episode0000001/
             ...
         Each JSON record (one per frame) includes:
-          { "episode": <int>, "frame": <int>, "wrist_1": "episodeXXXX/...", "ins_emb_path": "episodeXXXX/text_clip.npy", "state": [x,y,z,grip], (optional) "depth_1": "..." }
+          {
+            "episode": <int>, "frame": <int>,
+            "wrist_1": "episodeXXXX/...",            # RGB latent .npy
+            "ins_emb_path": "episodeXXXX/text_clip.npy",
+            "state": [x,y,z,grip],                   # absolute pose
+            (optional) "depth_1": "..."              # depth latent .npy
+          }
         """
         self.features_dir = features_dir
         self.args = args
 
         # holders
-        self.cond_rgb_file, self.rgb_file = [], []
-        self.cond_depth_file, self.depth_file = [], []
-        self.cond_action, self.action = [], []
-        self.ins_emb_file, self.labels = [], []
+        self.cond_rgb_file, self.rgb_file = [], []          # 当前帧 / 未来帧路径（RGB latent）
+        self.cond_depth_file, self.depth_file = [], []      # 当前帧 / 未来帧路径（Depth latent）
+        self.cond_action, self.action = [], []              # 当前位姿 / 未来位姿序列
+        self.ins_emb_file, self.labels = [], []             # 文本embedding / episode标签
 
-        skip_step = args.skip_step
-
-        # load all steps
+        # 1) 读取所有 step，并把相对路径归一为绝对路径
         step_infos = []
         for d in features_dir.split("+"):
             json_path = os.path.join(d, "dataset_rgb_s_d.json")
             with open(json_path, "r") as f:
                 steps = json.load(f)
             for s in steps:
-                # normalize paths to absolute
+                s = dict(s)  # 防止原地修改影响外部
                 s["wrist_1"] = os.path.join(d, s["wrist_1"])
-                if getattr(args, "use_depth", False) and "depth_1" in s:
+                if getattr(args, "use_depth", False) and ("depth_1" in s):
                     s["depth_1"] = os.path.join(d, s["depth_1"])
                 if "ins_emb_path" in s:
                     s["ins_emb_path"] = os.path.join(d, s["ins_emb_path"])
                 step_infos.append(s)
 
-        # build samples
-        for idx in range(len(step_infos)):
-            cond_traj = step_infos[idx]["episode"]
-            if idx + skip_step >= len(step_infos):
-                break
-            pred_traj = step_infos[idx + skip_step]["episode"]
-            if cond_traj != pred_traj:
+        # 2) 逐 episode 构建样本：仅保留完整地平线（不做尾部补帧）
+        episodes = {}
+        for s in step_infos:
+            ep = int(s["episode"])
+            episodes.setdefault(ep, []).append(s)
+
+        H = args.predict_horizon
+        S = args.skip_step
+
+        for ep, frames in episodes.items():
+            # 按 frame 排序；若无 frame 字段则保持读入顺序
+            if "frame" in frames[0]:
+                frames = sorted(frames, key=lambda x: int(x["frame"]))
+            L = len(frames)
+            # 需要 t + i*S (i=1..H) 全都在同一 episode 内
+            max_t = L - H * S - 1
+            if max_t < 0:
                 continue
 
-            # current
-            self.cond_rgb_file.append(step_infos[idx]["wrist_1"])
-            if getattr(args, "use_depth", False) and ("depth_1" in step_infos[idx]):
-                self.cond_depth_file.append(step_infos[idx]["depth_1"])
-            if getattr(args, "action_steps", 0) > 0:
-                self.cond_action.append(step_infos[idx]["state"])
+            for t in range(0, max_t + 1):
+                cond = frames[t]
 
-            # future with stable padding
-            feats, depths, acts = [], [], []
-            last_depth = step_infos[idx].get("depth_1", None)
-            last_action = step_infos[idx]["state"] if getattr(args, "action_steps", 0) > 0 else None
+                # 当前帧可用性检查
+                if getattr(args, "use_depth", False) and ("depth_1" not in cond):
+                    continue
+                if getattr(args, "action_steps", 0) > 0 and ("state" not in cond):
+                    continue
 
-            cur = idx
-            for _ in range(args.predict_horizon):
-                nxt = cur + skip_step
-                same_ep = (nxt < len(step_infos)) and (step_infos[nxt]["episode"] == cond_traj)
-                if same_ep:
-                    feats.append(step_infos[nxt]["wrist_1"])
-                    if getattr(args, "use_depth", False) and ("depth_1" in step_infos[nxt]):
-                        last_depth = step_infos[nxt]["depth_1"]
-                        depths.append(last_depth)
-                    if getattr(args, "action_steps", 0) > 0:
-                        last_action = step_infos[nxt]["state"]
-                        acts.append(last_action)
-                    cur = nxt
-                else:
-                    feats.append(feats[-1] if len(feats) > 0 else step_infos[idx]["wrist_1"])
+                # 采集未来 H 帧，必须都存在（不补帧）
+                future_rgb, future_depth, future_action = [], [], []
+                valid = True
+                for i in range(1, H + 1):
+                    idx_f = t + i * S
+                    if idx_f >= L:
+                        valid = False
+                        break
+                    step_f = frames[idx_f]
+                    # 深度/动作可用性检查
+                    if getattr(args, "use_depth", False) and ("depth_1" not in step_f):
+                        valid = False
+                        break
+                    if getattr(args, "action_steps", 0) > 0 and ("state" not in step_f):
+                        valid = False
+                        break
+
+                    future_rgb.append(step_f["wrist_1"])
                     if getattr(args, "use_depth", False):
-                        depths.append(last_depth)
+                        future_depth.append(step_f["depth_1"])
                     if getattr(args, "action_steps", 0) > 0:
-                        acts.append(last_action)
+                        future_action.append(step_f["state"])
 
-            self.rgb_file.append(feats)
-            self.depth_file.append(depths)
-            if getattr(args, "action_steps", 0) > 0:
-                self.action.append(acts)
+                if not valid:
+                    continue  # 丢弃不完整样本
 
-            self.ins_emb_file.append(step_infos[idx].get("ins_emb_path", None))
-            self.labels.append(int(cond_traj))
+                # —— 写入样本 —— #
+                # 当前帧
+                self.cond_rgb_file.append(cond["wrist_1"])
+                if getattr(args, "use_depth", False):
+                    self.cond_depth_file.append(cond["depth_1"])
+                if getattr(args, "action_steps", 0) > 0:
+                    self.cond_action.append(cond["state"])
+                # 未来帧
+                self.rgb_file.append(future_rgb)                     # 长度 H
+                if getattr(args, "use_depth", False):
+                    self.depth_file.append(future_depth)             # 长度 H
+                else:
+                    self.depth_file.append([])                       # 占位（__getitem__里忽略）
+                if getattr(args, "action_steps", 0) > 0:
+                    self.action.append(future_action)                # 长度 H
+                # 文本路径 & 标签
+                self.ins_emb_file.append(cond.get("ins_emb_path", None))
+                self.labels.append(int(ep))
 
-        # sanity checks
+        # 3) 一致性检查
         assert len(self.rgb_file) == len(self.cond_rgb_file) == len(self.ins_emb_file) == len(self.labels), \
-            "rgb/cond_rgb/ins_emb/labels length mismatch"
-        if getattr(args, "action_steps", 0) > 0:
+            "rgb/cond_rgb/ins_emb/labels length mismatch after filtering"
+        if getattr(self.args, "action_steps", 0) > 0:
             assert len(self.action) == len(self.cond_action) == len(self.rgb_file), \
-                "action/cond_action/rgb length mismatch"
+                "action/cond_action/rgb length mismatch after filtering"
 
         print("length of dataset", len(self.cond_rgb_file))
 
@@ -351,7 +379,7 @@ class RobotDataset(Dataset):
     def __getitem__(self, idx):
         # ----- RGB -----
         x_cond = np.load(self.cond_rgb_file[idx])                 # (1,4,32,32)
-        rgbs = [np.load(p) for p in self.rgb_file[idx]]           # list of (1,4,32,32)
+        rgbs = [np.load(p) for p in self.rgb_file[idx]]           # H * (1,4,32,32)
         x = np.concatenate(rgbs, axis=1)                          # (1,4*H,32,32)
 
         # ----- Text -----
@@ -362,46 +390,39 @@ class RobotDataset(Dataset):
 
         # ----- Depth -----
         if getattr(self.args, "use_depth", False):
-            if idx < len(self.cond_depth_file) and self.cond_depth_file[idx] is not None:
-                dcond = np.load(self.cond_depth_file[idx])
-                dcond = self.filter(dcond) if not getattr(self.args, "depth_filter", False) else self.filter2(dcond)
-                dcond = dcond[np.newaxis]                        # (1,32,32)
-            else:
-                dcond = np.zeros((1, 32, 32), dtype=np.float32)
+            dcond = np.load(self.cond_depth_file[idx])
+            dcond = self.filter(dcond) if not getattr(self.args, "depth_filter", False) else self.filter2(dcond)
+            dcond = dcond[np.newaxis]                             # (1,32,32)
 
             dseq = []
             for p in self.depth_file[idx]:
-                if p is None:
-                    dseq.append(np.zeros((32, 32), dtype=np.float32))
-                else:
-                    d = np.load(p)
-                    d = self.filter(d) if not getattr(self.args, "depth_filter", False) else self.filter2(d)
-                    dseq.append(d)
-            depth = np.stack(dseq) if len(dseq) > 0 else np.zeros((self.args.predict_horizon, 32, 32), dtype=np.float32)
+                d = np.load(p)
+                d = self.filter(d) if not getattr(self.args, "depth_filter", False) else self.filter2(d)
+                dseq.append(d)
+            depth = np.stack(dseq)                                # (H,32,32)
         else:
             dcond = np.zeros((1, 32, 32), dtype=np.float32)
             depth = np.zeros((self.args.predict_horizon, 32, 32), dtype=np.float32)
 
         # ----- Actions (state/pose) -----
         if getattr(self.args, "action_steps", 0) > 0:
-            act_seq = np.array(self.action[idx], dtype=np.float32)                    # (H,4)
-            base = np.array(self.cond_action[idx], dtype=np.float32).reshape(1, -1)   # (1,4)
+            act_seq = np.array(self.action[idx], dtype=np.float32)                    # (H, a_dim)
+            base = np.array(self.cond_action[idx], dtype=np.float32).reshape(1, -1)   # (1, a_dim)
             if not getattr(self.args, "absolute_action", True):
                 act_seq = act_seq - base
-            act_seq = act_seq[:self.args.action_steps, :]                              # (S,4)
+            act_seq = act_seq[:self.args.action_steps, :]                              # (S, a_dim)
             act_seq = act_seq * self.args.action_scale
-            cact = base * self.args.action_scale                                       # (1,4)
+            cact = base * self.args.action_scale                                       # (1, a_dim)
 
-            if getattr(self.args, "action_condition", True):
-                action = act_seq.reshape(1, -1)                                        # (1, 4*S)
-                assert action.shape[-1] == self.args.action_dim * self.args.action_steps
-                assert cact.shape[-1] == self.args.action_dim
+            if getattr(self.args, "action_condition", False):
+                # 单 token 拼接（与某些实现匹配）
+                action = act_seq.reshape(1, -1)                                        # (1, a_dim*S)
             else:
-                action = act_seq[0:1, :]                                               # (1,4)
+                # 多 token（逐步）或在后续模型里再处理
+                action = act_seq[0:1, :]                                               # (1, a_dim)
         else:
-            action_size = max(1, self.args.action_dim * self.args.action_steps)
-            action = np.zeros((1, action_size), dtype=np.float32)
-            cact = np.zeros((1, max(1, self.args.action_dim)), dtype=np.float32)
+            action = np.zeros((1, self.args.action_dim * self.args.action_steps), dtype=np.float32)
+            cact = np.zeros((1, self.args.action_dim), dtype=np.float32)
 
         return (
             torch.from_numpy(x_cond),
@@ -412,4 +433,3 @@ class RobotDataset(Dataset):
             torch.from_numpy(action).float(),
             torch.from_numpy(y).float(),
         )
-
