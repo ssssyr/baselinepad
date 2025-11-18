@@ -74,7 +74,7 @@ components:
   action_dim: 4             # 4-DOF action space for MetaWorld
   action_scale: 10.0        # Scaling factor for actions
   absolute_action: true     # Use absolute actions instead of relative
-  action_condition: false   # Disable action conditioning to enable temporal learning
+  action_condition: true   # Disable action conditioning to enable temporal learning
   learnable_action_pos: true # Use learnable positional embeddings for actions
 
   # Loss Configuration
