@@ -18,17 +18,23 @@ training:
   skip_step: 4          # Steps to skip between frames
 
   # Training Loop
-  epochs: 1000
+  epochs: 1500
   global_batch_size: 128
   global_seed: 42
   num_workers: 8
   without_ema: false
   
   # Optimizer Settings
-  learning_rate: 1e-5   # Learning rate for AdamW optimizer
+  learning_rate: 1e-4   # Learning rate for AdamW optimizer
   weight_decay: 0.0     # Weight decay for AdamW optimizer
   adam_beta1: 0.9       # AdamW beta1 parameter
   adam_beta2: 0.999     # AdamW beta2 parameter
+
+  # Learning Rate Scheduler Settings
+  use_lr_scheduler: true        # Enable learning rate scheduler
+  scheduler_type: "cosine"      # Type of scheduler: "cosine", "linear", "constant"
+  warmup_steps: 10000          # Steps to keep constant learning rate before annealing
+  min_lr_ratio: 0.01           # Minimum learning rate as ratio of initial lr (1% of original)
 
   # Logging and Checkpointing
   log_every: 100

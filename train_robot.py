@@ -11,6 +11,7 @@ A minimal training script for DiT with horizon-aware weight adaptation.
 import os
 import logging
 import argparse
+import math
 from glob import glob
 from time import time
 from copy import deepcopy
@@ -302,6 +303,33 @@ def main(args):
     beta2 = float(getattr(args, 'adam_beta2', 0.999))
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(beta1, beta2))
 
+    # Learning Rate Scheduler
+    lr_scheduler = None
+    if getattr(args, 'use_lr_scheduler', False):
+        scheduler_type = getattr(args, 'scheduler_type', 'cosine')
+        warmup_steps = getattr(args, 'warmup_steps', 10000)
+        min_lr_ratio = getattr(args, 'min_lr_ratio', 0.01)
+        
+        if scheduler_type == 'cosine':
+            # Custom cosine scheduler with warmup
+            total_steps = args.epochs * len(dataset) // args.global_batch_size
+            cosine_steps = total_steps - warmup_steps
+            min_lr = lr * min_lr_ratio
+            
+            def lr_lambda(current_step):
+                if current_step < warmup_steps:
+                    # Constant learning rate during warmup
+                    return 1.0
+                else:
+                    # Cosine annealing after warmup
+                    progress = (current_step - warmup_steps) / cosine_steps
+                    return min_lr_ratio + (1 - min_lr_ratio) * 0.5 * (1 + math.cos(math.pi * progress))
+            
+            lr_scheduler = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda)
+            
+            if accelerator.is_main_process:
+                logger.info(f"Using cosine annealing scheduler: warmup_steps={warmup_steps}, total_steps={total_steps}, min_lr_ratio={min_lr_ratio}")
+
     # Data
     dataset = RobotDataset(args.feature_path, args)
     loader = DataLoader(
@@ -401,6 +429,11 @@ def main(args):
             opt.zero_grad()
             accelerator.backward(loss)
             opt.step()
+            
+            # Step learning rate scheduler
+            if lr_scheduler is not None:
+                lr_scheduler.step()
+            
             if not args.without_ema:
                 update_ema(ema, model)
 
@@ -423,14 +456,17 @@ def main(args):
                 avg_loss_d = (running_loss_d / log_steps) if log_steps > 0 else 0.0
 
                 if accelerator.is_main_process:
+                    # Get current learning rate
+                    current_lr = opt.param_groups[0]['lr']
                     logger.info(f"(step={train_steps:07d}) Train Loss image: {avg_loss:.6f}, "
                                 f"Train Loss action:{avg_loss_a:.6f}, Train Loss depth:{avg_loss_d:.6f}, "
-                                f"Train Steps/Sec: {steps_per_sec:.2f}")
+                                f"Train Steps/Sec: {steps_per_sec:.2f}, LR: {current_lr:.2e}")
                     if args.use_wandb:
                         import wandb
                         log_payload = {
                             "train/loss_image": avg_loss,
                             "train/steps_per_sec": steps_per_sec,
+                            "train/learning_rate": current_lr,
                         }
                         if args.action_steps > 0:
                             log_payload["train/loss_action"] = avg_loss_a
