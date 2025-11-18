@@ -8,12 +8,29 @@ import matplotlib.pyplot as plt
 import os
 from tqdm import tqdm
 import cv2
+import random
+import torch
+import time
 
 os.environ["MUJOCO_GL"] = "egl"
 from metaworld.envs import (ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE, ALL_V2_ENVIRONMENTS_GOAL_HIDDEN)
 
 from evaluation.agent import DiffusionAgent
-from evaluation.run_cfg import INSTRUCTIONS, META_CONFIG 
+from evaluation.run_cfg import INSTRUCTIONS, META_CONFIG
+
+def set_random_seed(seed=None):
+    """Set random seed for reproducibility or randomness"""
+    if seed is None:
+        seed = int(time.time() * 1000000) % (2**32)  # Use microsecond timestamp as seed
+    
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    
+    print(f"🎲 Set random seed: {seed}")
+    return seed 
 
 def add_bound(rgb,color="red"):
     width=10
@@ -123,6 +140,8 @@ for selected_id, task in enumerate(task_list):
     env = env_cls(seed=selected_id+100)
 
     for traj_idx in range(META_CONFIG['rollout_num']):
+        # Set different random seed for each trajectory to ensure diverse sampling
+        current_seed = set_random_seed()
         print("task name", task, 'traj_idx', traj_idx)
         image_3 = []
 
@@ -152,7 +171,45 @@ for selected_id, task in enumerate(task_list):
             
             # motion planner to reach the target pose, starting from the current pose
             info, img = motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, image_3, thirdview, predict_img=predict_img, img_word=img_word)
-            print(info)
+
+            # 针对所有任务的详细进度显示
+            obj_to_target = info.get('obj_to_target', 0.0)
+            near_object = info.get('near_object', 0.0)
+            grasp_success = info.get('grasp_success', 0.0)
+            grasp_reward = info.get('grasp_reward', 0.0)
+            in_place_reward = info.get('in_place_reward', 0.0)
+
+            # 计算进度百分比（对于有obj_to_target的任务）
+            if obj_to_target > 0:
+                progress_pct = max(0, min(100, (1.0 - obj_to_target/0.15) * 100))  # 假设初始距离约0.15米
+                print(f"Step {plan_step+1}: success={info['success']:.1f}, obj_to_target={obj_to_target:.4f}m ({progress_pct:.1f}%)")
+            else:
+                print(f"Step {plan_step+1}: success={info['success']:.1f}, obj_to_target=N/A")
+
+            print(f"  └─ near_object={near_object:.3f}, grasp_success={grasp_success:.3f}, grasp_reward={grasp_reward:.3f}, in_place_reward={in_place_reward:.3f}")
+
+            # 详细的成功判断和反馈
+            if plan_step == META_CONFIG['max_steps'] - 1:  # 最后一步
+                if info['success']:
+                    print(f"🎉 {task} traj_idx {traj_idx} FULL SUCCESS!")
+                    if obj_to_target > 0:
+                        print(f"   Final obj_to_target: {obj_to_target:.4f}m")
+                elif obj_to_target > 0:
+                    # 根据任务类型设置不同的进度阈值
+                    if task.startswith('button-press'):
+                        threshold = 0.06
+                    elif task.startswith('basketball'):
+                        threshold = 0.08
+                    else:
+                        threshold = 0.05
+
+                    if obj_to_target <= threshold:
+                        print(f"👍 {task} traj_idx {traj_idx} GOOD PROGRESS (obj_to_target: {obj_to_target:.4f}m)")
+                    else:
+                        print(f"⚠️ {task} traj_idx {traj_idx} Need more progress (obj_to_target: {obj_to_target:.4f}m)")
+                        print(f"   Target: <=0.04m, Current progress: {threshold - obj_to_target:.4f}m away")
+                else:
+                    print(f"📊 {task} traj_idx {traj_idx} COMPLETED (success={info['success']:.1f})")
 
             if info['success']:
                 print(task, traj_idx, 'success')

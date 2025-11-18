@@ -1,5 +1,7 @@
 import torch
 import torch.distributed as dist
+import argparse
+import os
 from models import DiT_models
 from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
@@ -10,8 +12,34 @@ import matplotlib.pyplot as plt
 
 class DiffusionAgent():
     def __init__(self, ckpt_path, vae_path="/cephfs/shared/llm/sd-vae-ft-mse", clip_path="/cephfs/shared/llm/clip-vit-base-patch32",denoise_steps=200):
-        checkpoint = torch.load(ckpt_path, map_location="cpu")
-        args = checkpoint["args"]
+        # 安全加载模型，添加argparse.Namespace到安全全局列表
+        torch.serialization.add_safe_globals([argparse.Namespace])
+
+        # 添加模型加载调试信息
+        print(f"🔄 Loading model from: {ckpt_path}")
+        file_size = os.path.getsize(ckpt_path) / (1024*1024*1024)  # GB
+        print(f"📁 Model file size: {file_size:.2f} GB")
+
+        try:
+            checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+        except Exception as e:
+            print(f"Failed to load with weights_only=True, falling back to weights_only=False: {e}")
+            checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+
+        # 打印模型信息
+        print(f"📋 Model keys: {list(checkpoint.keys())}")
+        if "args" in checkpoint:
+            args = checkpoint["args"]
+            print(f"🎯 Model args: {args}")
+            print(f"🏷️  Model name: {getattr(args, 'model', 'unknown')}")
+            print(f"📊 Image size: {getattr(args, 'image_size', 'unknown')}")
+            print(f"🔢 Epochs: {getattr(args, 'epochs', 'unknown')}")
+            print(f"🎲 Global seed: {getattr(args, 'global_seed', 'unknown')}")
+            print(f"📈 Action scale: {getattr(args, 'action_scale', 'unknown')}")
+        else:
+            print("⚠️  No 'args' key found in checkpoint!")
+            args = argparse.Namespace()  # 创建默认args
+
         self.args = args
 
         new_attr = ["action_condition", "action_dim", "action_steps", "d_hidden_size", "use_depth", 'ckpt_wrapper']
@@ -32,9 +60,30 @@ class DiffusionAgent():
         state_dict = checkpoint["model"]
         model_dict = self.model.state_dict()
         state_dict = {k: v for k, v in state_dict.items() if k in model_dict}
+
+        # 计算模型参数的哈希值用于比较
+        param_hash = 0
+        for key, tensor in sorted(state_dict.items()):
+            # 使用tensor的数据计算哈希
+            param_hash += hash((key, tuple(tensor.flatten()[:10].tolist())))  # 只取前10个元素避免内存问题
+        print(f"🔑 Model parameter hash (first 10 values per layer): {param_hash}")
+        print(f"📊 Total loaded parameters: {len(state_dict)}")
+
+        # 检查第一层的几个参数作为额外验证
+        if state_dict:
+            first_key = list(state_dict.keys())[0]
+            first_tensor = state_dict[first_key]
+            print(f"🔍 First layer '{first_key}' sample values: {first_tensor.flatten()[:5].tolist()}")
+
         self.model.load_state_dict(state_dict)
         self.model.to(self.device)
         self.model.eval()
+
+        # 验证加载后的模型参数
+        with torch.no_grad():
+            # 获取第一个参数作为指纹
+            first_param = next(self.model.parameters())
+            print(f"✅ Loaded model fingerprint (first 5 values): {first_param.flatten()[:5].tolist()}")
 
         print("load diffusion")
         self.diffusion = create_diffusion(str(denoise_steps))
@@ -84,13 +133,15 @@ class DiffusionAgent():
             depth_cond = torch.tensor(depth_cond).float().to(self.device)
         else:
             depth_cond = None
-        # print("y shape:", y.shape, "x_cond shape:", x_cond.shape, "depth_cond shape:", depth_cond.shape)
+        print("y shape:", y.shape, "x_cond shape:", x_cond.shape, "depth_cond shape:", depth_cond.shape if depth_cond is not None else None)
         
         sample_fn = self.model.forward
 
         t = self.args.predict_horizon
         latent_size = self.args.image_size // 8
         z = torch.randn(1, self.model.in_channels*t, latent_size, latent_size).to(self.device)
+        print(f"🎲 Initial noise z mean: {z.mean():.6f}, std: {z.std():.6f}")
+
         # if self.args has arribute action_condition and self.args.action_condition:
         if hasattr(self.args, "action_condition") and self.args.action_condition:
             action_cond = torch.tensor(state*self.args.action_scale).float().to(self.device).unsqueeze(0).unsqueeze(0)
@@ -100,6 +151,9 @@ class DiffusionAgent():
         length = self.args.action_dim if not self.args.action_condition else int(self.args.action_dim*self.args.action_steps)
         z_a = torch.randn(1, z_a_dim, length, device=self.device) if self.args.action_steps>0 else None
         z_d = torch.randn(1, t, self.args.d_hidden_size, self.args.d_hidden_size, device=self.device) if self.args.use_depth else None
+
+        print(f"🎯 Input state: {state[:4] if state is not None else None}")
+        print(f"🎯 Action scale: {getattr(self.args, 'action_scale', 'unknown')}")
 
         model_kwargs = {
             "y": y,
@@ -123,6 +177,14 @@ class DiffusionAgent():
                 samples_a = samples_a.detach().cpu().numpy()
             if sample_depth is not None:
                 sample_depth = sample_depth.detach().cpu().numpy()
+
+        # 添加结果调试信息
+        if samples_a is not None:
+            print(f"🎯 Action prediction shape: {samples_a.shape}")
+            print(f"🎯 Action prediction sample values: {samples_a[0, 0, :5]}")
+            print(f"🎯 Action prediction mean: {samples_a.mean():.6f}, std: {samples_a.std():.6f}")
+
+        print(f"🎯 Latent prediction mean: {samples.mean():.6f}, std: {samples.std():.6f}")
 
         return samples, samples_a, sample_depth
     
@@ -148,7 +210,7 @@ class DiffusionAgent():
         t = self.args.predict_horizon
         depth_pred = depth_pred.reshape(B*t,int(C/t),H,W)
         print("depth_pred shape:", depth_pred.shape)
-        print("depth shape:", depth_cond.shape)
+        print("depth shape:", depth_cond.shape if depth_cond is not None else None)
         depth_img = np.concatenate([depth_cond, depth_pred[0][0], depth_pred[1][0], depth_pred[2][0]], axis=1)
         if not save:
             return depth_img

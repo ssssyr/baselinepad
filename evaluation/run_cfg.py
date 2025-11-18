@@ -1,7 +1,7 @@
 META_CONFIG = {
-    'ckpt_path': "ckpt/bridge_pre_mw_ft.pt", # replace!
-    'vae_path': "/home/disk2/gyj/llm/sd-vae-ft-mse/", # replace!
-    'clip_path': "/home/disk2/gyj/llm/clip-vit-base-patch32/", # replace!
+    'ckpt_path': "/mnt/sda/syr/checkpoint/checkpoint1118/best_action_loss.pt", # 使用你的模型
+    'vae_path': "/home/syr/code/models/sd-vae-ft-mse/", # 更新为正确的VAE路径
+    'clip_path': "/home/syr/code/models/clip-vit-base-patch32/", # 更新为正确的CLIP路径
     'thirdview_camera': 'corner3',
     'firstview_camera': 'gripperPOV',
     'use_depth': False, # whether to use depth
@@ -10,7 +10,7 @@ META_CONFIG = {
     'video_dir': "output",
     'visualize_prediction': True,
     'denoise_steps': 50, # joint denoise step
-    'task_list': ['pick-place-v2', 'basketball-v2'] # tasks you want to test
+    'task_list': ['button-press-v2'] # 只测试button-press-v2任务
 }
 
 BRIDGE_CONFIG = {

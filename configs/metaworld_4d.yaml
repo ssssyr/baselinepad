@@ -104,7 +104,7 @@ wandb:
 # ======================================================
 metaworld:
   task_names: ["button-press-v2"]  # MetaWorld tasks
-  data_path: "/home/ct_24210860031/812datasets/SYR/metaworld_raw"  # Path to original MetaWorld data (if available)
+  data_path: ""  # Path to original MetaWorld data (if available)
   image_size: 256  # Image resolution for MetaWorld
   use_depth: false  # Disable depth for MetaWorld
   camera_name: "corner2"  # Camera view for MetaWorld
