@@ -69,12 +69,12 @@ components:
   d_patch_size: 8
   depth_filter: false
 
-  # Action Conditioning - ENABLED for MetaWorld 4-DOF action prediction
+  # Action Conditioning - DISABLED to enable proper temporal prediction
   action_steps: 3           # Number of action steps to predict/condition on
   action_dim: 4             # 4-DOF action space for MetaWorld
   action_scale: 10.0        # Scaling factor for actions
   absolute_action: true     # Use absolute actions instead of relative
-  action_condition: true    # Enable action conditioning
+  action_condition: false   # Disable action conditioning to enable temporal learning
   learnable_action_pos: true # Use learnable positional embeddings for actions
 
   # Loss Configuration
