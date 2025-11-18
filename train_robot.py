@@ -303,7 +303,22 @@ def main(args):
     beta2 = float(getattr(args, 'adam_beta2', 0.999))
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(beta1, beta2))
 
-    # Learning Rate Scheduler
+    # Data
+    dataset = RobotDataset(args.feature_path, args)
+    loader = DataLoader(
+        dataset,
+        batch_size=int(args.global_batch_size // accelerator.num_processes),
+        shuffle=True,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        drop_last=True
+    )
+
+    if accelerator.is_main_process:
+        logger.info(f"Global batch size {args.global_batch_size:,} num_processes ({accelerator.num_processes})")
+        logger.info(f"Dataset contains {len(dataset):,} images ({args.feature_path})")
+
+    # Learning Rate Scheduler (after dataset is created)
     lr_scheduler = None
     if getattr(args, 'use_lr_scheduler', False):
         scheduler_type = getattr(args, 'scheduler_type', 'cosine')
@@ -329,21 +344,6 @@ def main(args):
             
             if accelerator.is_main_process:
                 logger.info(f"Using cosine annealing scheduler: warmup_steps={warmup_steps}, total_steps={total_steps}, min_lr_ratio={min_lr_ratio}")
-
-    # Data
-    dataset = RobotDataset(args.feature_path, args)
-    loader = DataLoader(
-        dataset,
-        batch_size=int(args.global_batch_size // accelerator.num_processes),
-        shuffle=True,
-        num_workers=args.num_workers,
-        pin_memory=True,
-        drop_last=True
-    )
-
-    if accelerator.is_main_process:
-        logger.info(f"Global batch size {args.global_batch_size:,} num_processes ({accelerator.num_processes})")
-        logger.info(f"Dataset contains {len(dataset):,} images ({args.feature_path})")
 
     # Prepare for distributed
     if not args.without_ema:
