@@ -243,15 +243,26 @@ def collect_one_trajectory(
 def main():
     print("=== Meta-World v2 采集（MT50：不保存 action） ===")
     print(f"输出目录: {OUTPUT_DIR.resolve()}")
-    print(f"相机: {CAMERA_NAME}, 分辨率: {IMAGE_RESOLUTION}, 每任务轨迹数: {NUM_TRAJECTORIES_PER_TASK}\n")
+    print(f"相机: {CAMERA_NAME}, 分辨率: {IMAGE_RESOLUTION}, 每任务轨迹数: {NUM_TRAJECTORIES_PER_TASK}")
+    print(f"总任务数: {len(TASKS_TO_COLLECT)}\n")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    for task_name, instruction in TASKS_TO_COLLECT.items():
+    for task_idx, (task_name, instruction) in enumerate(TASKS_TO_COLLECT.items()):
+        print(f"\n[{task_idx+1}/{len(TASKS_TO_COLLECT)}] 开始处理任务: {task_name}")
         env_key = task_name + "-goal-observable"
-        if task_name not in POLICY_MAPPING or env_key not in ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE:
-            print(f"⚠️ 跳过 {task_name}: 未找到专家或环境类（检查 v2 安装）")
+        
+        # 检查策略映射
+        if task_name not in POLICY_MAPPING:
+            print(f"⚠️ 跳过 {task_name}: 未找到专家策略")
             continue
+            
+        # 检查环境类
+        if env_key not in ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE:
+            print(f"⚠️ 跳过 {task_name}: 环境类 {env_key} 不存在")
+            continue
+            
+        print(f"✓ 任务 {task_name} 检查通过，开始采集...")
 
         policy = POLICY_MAPPING[task_name]()
         env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[env_key]
@@ -307,8 +318,9 @@ def main():
             json.dump(dataset_info, f, indent=2)
 
         print(f"✅ {task_name}: 保存 {saved} 条轨迹到 {task_dir}")
+        print(f"任务 {task_name} 完成，准备进行下一个任务...")
 
-    print("\n=== 全部任务完成 ===")
+    print(f"\n=== 全部 {len(TASKS_TO_COLLECT)} 个任务完成 ===")
 
 if __name__ == "__main__":
     main()
