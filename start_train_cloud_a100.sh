@@ -42,6 +42,26 @@ echo "📦 Batch Size:   $PER_GPU_BATCH_SIZE per GPU → $TOTAL_BATCH_SIZE total
 EPOCHS=1000
 LEARNING_RATE=1e-5
 
+# ---- 4.5) Checkpoint 恢复设置 ----
+CHECKPOINT_PATH=""
+echo ""
+[object Object]Do you want to resume from a checkpoint? (y/N): " RESUME_CHOICE
+if [[ "$RESUME_CHOICE" =~ ^[Yy]$ ]]; then
+    echo "📁 Please enter the full path to your checkpoint file:"
+    echo "   Example: /home/ct_24210860031/812code/SYR/baselinepad/results/metaworld_a100_20251119_013619/000-DiT-XL-2-2025-11-19-01-36-39/checkpoints/0001000.pt"
+    read -p "🎯 Checkpoint path: " CHECKPOINT_PATH
+    
+    if [ ! -f "$CHECKPOINT_PATH" ]; then
+        echo "❌ ERROR: Checkpoint file '$CHECKPOINT_PATH' not found!"
+        exit 1
+    fi
+    
+    echo "✅ Found checkpoint: $CHECKPOINT_PATH"
+    echo "🔄 Training will resume from this checkpoint..."
+else
+    echo "🆕 Starting fresh training (no checkpoint resume)"
+fi
+
 # ---- 5) W&B 配置（按需开启） ----
 WANDB_PROJECT="metaworld-action-prediction"
 WANDB_RUN_NAME="4xA100-metaworld-bs${TOTAL_BATCH_SIZE}-${TIMESTAMP}"
