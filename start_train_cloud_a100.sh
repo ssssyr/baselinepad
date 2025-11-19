@@ -45,7 +45,7 @@ LEARNING_RATE=1e-5
 # ---- 4.5) Checkpoint 恢复设置 ----
 CHECKPOINT_PATH=""
 echo ""
-[object Object]Do you want to resume from a checkpoint? (y/N): " RESUME_CHOICE
+RESUME_CHOICE="N"  # 直接设置为不恢复，跳过交互
 if [[ "$RESUME_CHOICE" =~ ^[Yy]$ ]]; then
     echo "📁 Please enter the full path to your checkpoint file:"
     echo "   Example: /home/ct_24210860031/812code/SYR/baselinepad/results/metaworld_a100_20251119_013619/000-DiT-XL-2-2025-11-19-01-36-39/checkpoints/0001000.pt"
