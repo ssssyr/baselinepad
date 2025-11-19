@@ -38,9 +38,11 @@ PER_GPU_BATCH_SIZE=16
 TOTAL_BATCH_SIZE=$((PER_GPU_BATCH_SIZE * NUM_GPUS))
 echo "📦 Batch Size:   $PER_GPU_BATCH_SIZE per GPU → $TOTAL_BATCH_SIZE total"
 
-# ---- 4) 训练超参（可被 YAML 覆盖；命令行优先）----
-EPOCHS=1000
-LEARNING_RATE=1e-5
+# ---- 4) 训练超参（YAML 文件优先）----
+# 下面的参数已注释掉，将使用 config 文件中的设置。
+# 如果需要从脚本指定，请取消注释并添加到下面的 torchrun 命令中。
+# EPOCHS=1000
+# LEARNING_RATE=1e-5
 
 # ---- 4.5) Checkpoint 恢复设置 ----
 CHECKPOINT_PATH=""
@@ -76,8 +78,8 @@ echo "🎯 Training Configuration Summary:"
 echo "   • Script: $TRAIN_SCRIPT"
 echo "   • Config: $CONFIG_FILE"
 echo "   • GPUs:   $CUDA_VISIBLE_DEVICES ($NUM_GPUS cards)"
-echo "   • Epochs: $EPOCHS"
-echo "   • LR:     $LEARNING_RATE"
+echo "   • Epochs: (from config)"
+echo "   • LR:     (from config)"
 echo "   • Global Batch Size: $TOTAL_BATCH_SIZE"
 echo "   • Results: $RESULTS_DIR"
 echo "   • WandB:  $WANDB_RUN_NAME"
@@ -121,8 +123,7 @@ echo "torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT $TRAIN_SCRI
 echo "  --config \"$CONFIG_FILE\" \\"
 echo "  --feature-path \"$FEATURE_PATH\" \\"
 echo "  --global-batch-size \"$TOTAL_BATCH_SIZE\" \\"
-echo "  --epochs \"$EPOCHS\" \\"
-echo "  --learning-rate \"$LEARNING_RATE\" \\"
+
 echo "  --results-dir \"$RESULTS_DIR\" \\"
 echo "  --use-wandb \\"
 echo "  --wandb-project \"$WANDB_PROJECT\" \\"
@@ -133,8 +134,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT "$TRAIN_SCRIPT" \
   --config "$CONFIG_FILE" \
   --feature-path "$FEATURE_PATH" \
   --global-batch-size "$TOTAL_BATCH_SIZE" \
-  --epochs "$EPOCHS" \
-  --learning-rate "$LEARNING_RATE" \
+
   --results-dir "$RESULTS_DIR" \
   --use-wandb \
   --wandb-project "$WANDB_PROJECT" \
