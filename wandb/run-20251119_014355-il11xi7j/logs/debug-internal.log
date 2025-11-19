@@ -1,0 +1,9 @@
+{"time":"2025-11-19T01:43:55.950296303+08:00","level":"INFO","msg":"stream: starting","core version":"0.22.3"}
+{"time":"2025-11-19T01:43:57.021787802+08:00","level":"INFO","msg":"stream: created new stream","id":"il11xi7j"}
+{"time":"2025-11-19T01:43:57.023788011+08:00","level":"INFO","msg":"handler: started","stream_id":"il11xi7j"}
+{"time":"2025-11-19T01:43:57.024796217+08:00","level":"INFO","msg":"stream: started","id":"il11xi7j"}
+{"time":"2025-11-19T01:43:57.024825621+08:00","level":"INFO","msg":"writer: started","stream_id":"il11xi7j"}
+{"time":"2025-11-19T01:43:57.024837611+08:00","level":"INFO","msg":"sender: started","stream_id":"il11xi7j"}
+{"time":"2025-11-19T03:22:12.424826532+08:00","level":"INFO","msg":"flowcontrol: backed up, offloading to disk","recordNumber":2920}
+{"time":"2025-11-19T03:22:37.964882615+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded"}
+{"time":"2025-11-19T03:22:41.518482186+08:00","level":"INFO","msg":"flowcontrol: unblocked","totalOffloaded":62}

@@ -45,10 +45,10 @@ LEARNING_RATE=1e-5
 # ---- 4.5) Checkpoint 恢复设置 ----
 CHECKPOINT_PATH=""
 echo ""
-RESUME_CHOICE="N"  # 直接设置为不恢复，跳过交互
+RESUME_CHOICE="y"  # 直接设置为不恢复，跳过交互
 if [[ "$RESUME_CHOICE" =~ ^[Yy]$ ]]; then
     echo "📁 Please enter the full path to your checkpoint file:"
-    echo "   Example: /home/ct_24210860031/812code/SYR/baselinepad/results/metaworld_a100_20251119_013619/000-DiT-XL-2-2025-11-19-01-36-39/checkpoints/0001000.pt"
+    echo "   Example: /home/ct_24210860031/812code/SYR/baselinepad/results/metaworld_a100_20251119_014323/000-DiT-XL-2-2025-11-19-01-43-46/checkpoints/0020000.pt"
     read -p "🎯 Checkpoint path: " CHECKPOINT_PATH
     
     if [ ! -f "$CHECKPOINT_PATH" ]; then

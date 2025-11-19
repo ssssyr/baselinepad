@@ -1,0 +1,43 @@
+✓ Successfully loaded & adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+Missing keys after load (ok if due to config changes): 7
+[[34m2025-11-19 11:25:45[0m] DiT Parameters: 677,401,464
+length of dataset 2229
+[[34m2025-11-19 11:25:45[0m] Global batch size 64 num_processes (4)
+[[34m2025-11-19 11:25:45[0m] Dataset contains 2,229 images (/home/ct_24210860031/812datasets/SYR/feature_complete)
+[[34m2025-11-19 11:25:45[0m] Using cosine annealing scheduler: warmup_steps=10000, total_steps=34828, min_lr_ratio=0.01
+[[34m2025-11-19 11:25:52[0m] Training for 1000 epochs...
+[[34m2025-11-19 11:25:52[0m] Beginning epoch 0...
+[[34m2025-11-19 11:26:11[0m] Beginning epoch 1...
+[[34m2025-11-19 11:26:23[0m] Beginning epoch 2...
+Traceback (most recent call last):
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 699, in <module>
+    main(args)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 421, in main
+    loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+    return super().training_losses(self._wrap_model(model), *args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 820, in training_losses
+    terms["vb"] = self._vb_terms_bpd(
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 745, in _vb_terms_bpd
+    true_mean, _, true_log_variance_clipped = self.q_posterior_mean_variance(
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 239, in q_posterior_mean_variance
+    _extract_into_tensor(self.posterior_mean_coef1, t, x_t.shape) * x_start
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 968, in _extract_into_tensor
+    res = th.from_numpy(arr).to(device=timesteps.device)[timesteps].float()
+KeyboardInterrupt
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 699, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 421, in main
+[rank0]:     loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+[rank0]:     return super().training_losses(self._wrap_model(model), *args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 820, in training_losses
+[rank0]:     terms["vb"] = self._vb_terms_bpd(
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 745, in _vb_terms_bpd
+[rank0]:     true_mean, _, true_log_variance_clipped = self.q_posterior_mean_variance(
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 239, in q_posterior_mean_variance
+[rank0]:     _extract_into_tensor(self.posterior_mean_coef1, t, x_t.shape) * x_start
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 968, in _extract_into_tensor
+[rank0]:     res = th.from_numpy(arr).to(device=timesteps.device)[timesteps].float()
+[rank0]: KeyboardInterrupt

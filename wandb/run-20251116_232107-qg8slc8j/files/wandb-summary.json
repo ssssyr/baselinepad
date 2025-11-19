@@ -1,0 +1,1 @@
+{"train/loss_image":0.005137743025552481,"eval/best_action_loss":0.0008844741969369352,"eval/loss_action":0.0016852052649483085,"train/loss_action":0.016214913177536802,"_timestamp":1.7633193299690158e+09,"_runtime":12860.013869782,"_step":41000,"eval/loss_image":0.003583572804927826,"_wandb":{"runtime":12860},"train/steps_per_sec":3.344904476364408}

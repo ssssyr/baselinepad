@@ -1,0 +1,26 @@
+2025-11-16 23:21:07,939 INFO    MainThread:118868 [wandb_setup.py:_flush():81] Current SDK version is 0.22.3
+2025-11-16 23:21:07,939 INFO    MainThread:118868 [wandb_setup.py:_flush():81] Configure stats pid to 118868
+2025-11-16 23:21:07,939 INFO    MainThread:118868 [wandb_setup.py:_flush():81] Loading settings from /home/ct_24210860031/.config/wandb/settings
+2025-11-16 23:21:07,939 INFO    MainThread:118868 [wandb_setup.py:_flush():81] Loading settings from /home/ct_24210860031/812code/SYR/baselinepad/wandb/settings
+2025-11-16 23:21:07,939 INFO    MainThread:118868 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2025-11-16 23:21:07,939 INFO    MainThread:118868 [wandb_init.py:setup_run_log_directory():706] Logging user logs to /home/ct_24210860031/812code/SYR/baselinepad/wandb/run-20251116_232107-qg8slc8j/logs/debug.log
+2025-11-16 23:21:07,939 INFO    MainThread:118868 [wandb_init.py:setup_run_log_directory():707] Logging internal logs to /home/ct_24210860031/812code/SYR/baselinepad/wandb/run-20251116_232107-qg8slc8j/logs/debug-internal.log
+2025-11-16 23:21:07,939 INFO    MainThread:118868 [wandb_init.py:init():833] calling init triggers
+2025-11-16 23:21:07,940 INFO    MainThread:118868 [wandb_init.py:init():838] wandb.init called with sweep_config: {}
+config: {'feature_path': '/home/ct_24210860031/812datasets/SYR/feature_complete', 'video_path': None, 'results_dir': '/home/ct_24210860031/812code/SYR/baselinepad/results/metaworld_a100_20251116_232050', 'model': 'DiT-XL/2', 'image_size': 256, 'num_classes': 1000, 'predict_horizon': 3, 'skip_step': 4, 'epochs': 1000, 'global_batch_size': 64, 'global_seed': 42, 'num_workers': 8, 'without_ema': False, 'learning_rate': 1e-05, 'weight_decay': 0.0, 'adam_beta1': 0.9, 'adam_beta2': 0.999, 'log_every': 100, 'eval_every': 2000, 'ckpt_every': 10000, 'ckpt_wrapper': False, 'resume': None, 'auto_resume': True, 'vae': 'ema', 'vae_path': '/home/ct_24210860031/812code/SYR/models/sd-vae-ft-mse', 'dit_init': None, 'rgb_init': '/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt', 'attn_mask': False, 'dynamics': True, 'text_cond': True, 'clip_path': '/home/ct_24210860031/812code/SYR/models/clip-vit-base-patch32', 'text_emb_size': 512, 'use_depth': False, 'd_hidden_size': 32, 'd_patch_size': 8, 'depth_filter': False, 'action_steps': 3, 'action_dim': 4, 'action_scale': 10.0, 'absolute_action': True, 'action_condition': True, 'learnable_action_pos': True, 'action_loss_lambda': 1.0, 'action_loss_start': 5000, 'use_moe': False, 'num_experts': 8, 'moe_top_k': 2, 'aux_loss_weight': 0.01, 'router_z_loss_weight': 0.001, 'use_wandb': True, 'wandb_project': 'metaworld-action-prediction', 'wandb_run_name': '4xA100-metaworld-bs64-20251116_232050', 'task_names': ['button-press-v2'], 'data_path': '/home/ct_24210860031/812datasets/SYR/metaworld_raw', 'camera_name': 'corner2', 'config': '/home/ct_24210860031/812code/SYR/baselinepad/configs/metaworld_4d.yaml', '_wandb': {}}
+2025-11-16 23:21:07,940 INFO    MainThread:118868 [wandb_init.py:init():881] starting backend
+2025-11-16 23:21:08,146 INFO    MainThread:118868 [wandb_init.py:init():884] sending inform_init request
+2025-11-16 23:21:08,149 INFO    MainThread:118868 [wandb_init.py:init():892] backend started and connected
+2025-11-16 23:21:08,151 INFO    MainThread:118868 [wandb_init.py:init():962] updated telemetry
+2025-11-16 23:21:08,155 INFO    MainThread:118868 [wandb_init.py:init():986] communicating run to backend with 90.0 second timeout
+2025-11-16 23:21:09,957 INFO    MainThread:118868 [wandb_init.py:init():1033] starting run threads in backend
+2025-11-16 23:21:10,051 INFO    MainThread:118868 [wandb_run.py:_console_start():2506] atexit reg
+2025-11-16 23:21:10,051 INFO    MainThread:118868 [wandb_run.py:_redirect():2354] redirect: wrap_raw
+2025-11-16 23:21:10,051 INFO    MainThread:118868 [wandb_run.py:_redirect():2423] Wrapping output streams.
+2025-11-16 23:21:10,051 INFO    MainThread:118868 [wandb_run.py:_redirect():2446] Redirects installed.
+2025-11-16 23:21:10,053 INFO    MainThread:118868 [wandb_init.py:init():1073] run started, returning control to user process
+2025-11-17 02:55:29,971 INFO    MainThread:118868 [wandb_run.py:_finish():2272] finishing run syr965948079-fudan-university-school-of-management/metaworld-action-prediction/qg8slc8j
+2025-11-17 02:55:29,971 INFO    MainThread:118868 [wandb_run.py:_atexit_cleanup():2471] got exitcode: 0
+2025-11-17 02:55:29,972 INFO    MainThread:118868 [wandb_run.py:_restore():2453] restore
+2025-11-17 02:55:29,972 INFO    MainThread:118868 [wandb_run.py:_restore():2459] restore done
+2025-11-17 02:55:33,580 INFO    MainThread:118868 [wandb_run.py:_footer_sync_info():3835] logging synced files

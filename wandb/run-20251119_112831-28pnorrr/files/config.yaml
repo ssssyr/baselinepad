@@ -1,0 +1,225 @@
+_wandb:
+    value:
+        cli_version: 0.22.3
+        e:
+            zkkcxmh40h49mrsksfkuqc6ubxmlmcdm:
+                args:
+                    - --config
+                    - /home/ct_24210860031/812code/SYR/baselinepad/configs/metaworld_4d.yaml
+                    - --feature-path
+                    - /home/ct_24210860031/812datasets/SYR/feature_complete
+                    - --global-batch-size
+                    - "64"
+                    - --epochs
+                    - "1000"
+                    - --learning-rate
+                    - "1e-5"
+                    - --results-dir
+                    - /home/ct_24210860031/812code/SYR/baselinepad/results/metaworld_a100_20251119_112708
+                    - --use-wandb
+                    - --wandb-project
+                    - metaworld-action-prediction
+                    - --wandb-run-name
+                    - 4xA100-metaworld-bs64-20251119_112708
+                    - --dynamics
+                codePath: train_robot.py
+                codePathLocal: train_robot.py
+                cpu_count: 64
+                cpu_count_logical: 128
+                cudaVersion: "12.1"
+                disk:
+                    /:
+                        total: "3838879215616"
+                        used: "3204597063680"
+                email: syr965948079@gmail.com
+                executable: /home/ct_24210860031/miniconda3/envs/dae-moe/bin/python
+                git:
+                    commit: 44d91a50b7a2b64827e0c0975e5be4ad7cfb61d1
+                    remote: git@github.com:ssssyr/baselinepad.git
+                gpu: NVIDIA A100-SXM4-80GB
+                gpu_count: 8
+                gpu_nvidia:
+                    - architecture: Ampere
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-8eaa2108-b0db-919b-7f96-49aacef2504d
+                    - architecture: Ampere
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-ffbe07ea-e487-3915-73e1-836cc0a21dfd
+                    - architecture: Ampere
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-dc613f4e-e2f4-87fd-95e0-31cf156e6d94
+                    - architecture: Ampere
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-95290ece-1ec8-546d-e6b3-b29794902578
+                    - architecture: Ampere
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-6f21f4a5-d7b1-94d5-7b09-f1920781e7f9
+                    - architecture: Ampere
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-9d9c2230-7897-b19d-8381-d525f0a0d2cc
+                    - architecture: Ampere
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-340b6301-266a-a3b6-8ffc-d8aa9e351fd7
+                    - architecture: Ampere
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-b479fea0-df5f-a3c8-80a6-cfa4d35a9eaf
+                host: dsw-26274-676cf577b7-dgkxq
+                memory:
+                    total: "2163620315136"
+                os: Linux-3.10.0-1160.el7.x86_64-x86_64-with-glibc2.35
+                program: /home/ct_24210860031/812code/SYR/baselinepad/train_robot.py
+                python: CPython 3.10.19
+                root: /home/ct_24210860031/812code/SYR/baselinepad
+                startedAt: "2025-11-19T03:28:31.112217Z"
+                writerId: zkkcxmh40h49mrsksfkuqc6ubxmlmcdm
+        m: []
+        python_version: 3.10.19
+        t:
+            "1":
+                - 1
+                - 11
+                - 41
+                - 49
+                - 51
+                - 63
+                - 71
+                - 83
+            "2":
+                - 1
+                - 11
+                - 41
+                - 49
+                - 51
+                - 63
+                - 71
+                - 83
+            "3":
+                - 13
+                - 16
+                - 61
+            "4": 3.10.19
+            "5": 0.22.3
+            "6": 4.44.0
+            "12": 0.22.3
+            "13": linux-x86_64
+absolute_action:
+    value: true
+action_condition:
+    value: true
+action_dim:
+    value: 4
+action_loss_lambda:
+    value: 1
+action_loss_start:
+    value: 5000
+action_scale:
+    value: 10
+action_steps:
+    value: 3
+adam_beta1:
+    value: 0.9
+adam_beta2:
+    value: 0.999
+attn_mask:
+    value: false
+auto_resume:
+    value: true
+aux_loss_weight:
+    value: 0.01
+camera_name:
+    value: corner2
+ckpt_every:
+    value: 10000
+ckpt_wrapper:
+    value: false
+clip_path:
+    value: /home/ct_24210860031/812code/SYR/models/clip-vit-base-patch32
+config:
+    value: /home/ct_24210860031/812code/SYR/baselinepad/configs/metaworld_4d.yaml
+d_hidden_size:
+    value: 32
+d_patch_size:
+    value: 8
+data_path:
+    value: ""
+depth_filter:
+    value: false
+dit_init:
+    value: null
+dynamics:
+    value: true
+epochs:
+    value: 1000
+eval_every:
+    value: 2000
+feature_path:
+    value: /home/ct_24210860031/812datasets/SYR/feature_complete
+global_batch_size:
+    value: 64
+global_seed:
+    value: 42
+image_size:
+    value: 256
+learnable_action_pos:
+    value: true
+learning_rate:
+    value: 1e-05
+log_every:
+    value: 100
+min_lr_ratio:
+    value: 0.01
+model:
+    value: DiT-XL/2
+moe_top_k:
+    value: 2
+num_classes:
+    value: 1000
+num_experts:
+    value: 8
+num_workers:
+    value: 8
+predict_horizon:
+    value: 3
+results_dir:
+    value: /home/ct_24210860031/812code/SYR/baselinepad/results/metaworld_a100_20251119_112708
+resume:
+    value: null
+rgb_init:
+    value: /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+router_z_loss_weight:
+    value: 0.001
+scheduler_type:
+    value: cosine
+skip_step:
+    value: 4
+task_names:
+    value:
+        - button-press-v2
+text_cond:
+    value: true
+text_emb_size:
+    value: 512
+use_depth:
+    value: false
+use_lr_scheduler:
+    value: true
+use_moe:
+    value: false
+use_wandb:
+    value: true
+vae:
+    value: ema
+vae_path:
+    value: /home/ct_24210860031/812code/SYR/models/sd-vae-ft-mse
+video_path:
+    value: null
+wandb_project:
+    value: metaworld-action-prediction
+wandb_run_name:
+    value: 4xA100-metaworld-bs64-20251119_112708
+warmup_steps:
+    value: 10000
+weight_decay:
+    value: 0
+without_ema:
+    value: false
