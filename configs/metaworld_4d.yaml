@@ -59,7 +59,7 @@ components:
   rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt"
 
   # Attention
-  attn_mask: false
+  attn_mask: true
 
   # Dynamics - Enable for MetaWorld
   dynamics: true
@@ -81,7 +81,7 @@ components:
   action_scale: 10.0        # Scaling factor for actions
   absolute_action: true     # Use absolute actions instead of relative
   action_condition: true   # Disable action conditioning to enable temporal learning
-  learnable_action_pos: true # Use learnable positional embeddings for actions
+  learnable_action_pos: false # Use fixed sin-cos positional embeddings for actions
 
   # Loss Configuration
   action_loss_lambda: 1.0   # Weight for the action prediction loss

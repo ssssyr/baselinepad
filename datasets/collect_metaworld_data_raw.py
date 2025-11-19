@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Meta-World v2 数据采集脚本（最小化：不保存 action）
+Meta-World v2 数据采集脚本（MT50 全量：不保存 action）
 - 每个任务采集 N 条轨迹
 - 固定相机 'corner2'，离屏渲染 PNG 帧
 - 每条轨迹的 JSON 条目仅包含：
@@ -31,20 +31,107 @@ from metaworld.policies import (
     SawyerBinPickingV2Policy,
     SawyerBoxCloseV2Policy,
     SawyerButtonPressTopdownV2Policy,
+    SawyerButtonPressTopdownWallV2Policy,
     SawyerButtonPressV2Policy,
+    SawyerButtonPressWallV2Policy,
     SawyerCoffeeButtonV2Policy,
     SawyerCoffeePullV2Policy,
     SawyerCoffeePushV2Policy,
     SawyerDialTurnV2Policy,
+    SawyerDisassembleV2Policy,
+    SawyerDoorCloseV2Policy,
+    SawyerDoorLockV2Policy,
+    SawyerDoorOpenV2Policy,
+    SawyerDoorUnlockV2Policy,
+    SawyerDrawerCloseV2Policy,
+    SawyerDrawerOpenV2Policy,
+    SawyerFaucetCloseV2Policy,
+    SawyerFaucetOpenV2Policy,
+    SawyerHammerV2Policy,
+    SawyerHandInsertV2Policy,
+    SawyerHandlePressSideV2Policy,
+    SawyerHandlePressV2Policy,
+    SawyerHandlePullSideV2Policy,
+    SawyerHandlePullV2Policy,
+    SawyerLeverPullV2Policy,
+    SawyerPegInsertionSideV2Policy,
+    SawyerPegUnplugSideV2Policy,
+    SawyerPickOutOfHoleV2Policy,
+    SawyerPickPlaceV2Policy,
+    SawyerPickPlaceWallV2Policy,
+    SawyerPlateSlideBackSideV2Policy,
+    SawyerPlateSlideBackV2Policy,
+    SawyerPlateSlideSideV2Policy,
+    SawyerPlateSlideV2Policy,
+    SawyerPushBackV2Policy,
+    SawyerPushV2Policy,
+    SawyerPushWallV2Policy,
+    SawyerReachV2Policy,
+    SawyerReachWallV2Policy,
+    SawyerShelfPlaceV2Policy,
+    SawyerSoccerV2Policy,
+    SawyerStickPullV2Policy,
+    SawyerStickPushV2Policy,
+    SawyerSweepIntoV2Policy,
+    SawyerSweepV2Policy,
+    SawyerWindowCloseV2Policy,
+    SawyerWindowOpenV2Policy,
 )
 
 # ---------------- 配 置 ---------------- #
+
+# 50 个 v2 任务 → 简洁英文指令（可按需改成中文）
 TASKS_TO_COLLECT: Dict[str, str] = {
-    "button-press-v2": "press the button",
-    # 需要更多任务就取消注释/添加：
-    # "assembly-v2": "assemble the peg",
-    # "basketball-v2": "shoot the basketball into the hoop",
-    # ...
+    "assembly-v2":                 "assemble the peg",
+    "basketball-v2":               "shoot the basketball into the hoop",
+    "bin-picking-v2":              "pick the object from the bin",
+    "box-close-v2":                "close the box lid",
+    "button-press-topdown-v2":     "press the button from the top",
+    "button-press-topdown-wall-v2":"press the wall-mounted button from the top",
+    "button-press-v2":             "press the button",
+    "button-press-wall-v2":        "press the wall-mounted button",
+    "coffee-button-v2":            "press the coffee machine button",
+    "coffee-pull-v2":              "pull the coffee mug",
+    "coffee-push-v2":              "push the coffee mug",
+    "dial-turn-v2":                "turn the dial",
+    "disassemble-v2":              "disassemble the object",
+    "door-close-v2":               "close the door",
+    "door-lock-v2":                "lock the door",
+    "door-open-v2":                "open the door",
+    "door-unlock-v2":              "unlock the door",
+    "drawer-close-v2":             "close the drawer",
+    "drawer-open-v2":              "open the drawer",
+    "faucet-close-v2":             "close the faucet",
+    "faucet-open-v2":              "open the faucet",
+    "hammer-v2":                   "hammer the object",
+    "hand-insert-v2":              "insert the hand into the slot",
+    "handle-press-side-v2":        "press the side handle",
+    "handle-press-v2":             "press the handle",
+    "handle-pull-side-v2":         "pull the side handle",
+    "handle-pull-v2":              "pull the handle",
+    "lever-pull-v2":               "pull the lever",
+    "peg-insert-side-v2":          "insert the peg from the side",
+    "peg-unplug-side-v2":          "unplug the side peg",
+    "pick-out-of-hole-v2":         "pick the object out of the hole",
+    "pick-place-v2":               "pick and place the object",
+    "pick-place-wall-v2":          "pick and place the object to the wall target",
+    "plate-slide-back-side-v2":    "slide the plate back from the side",
+    "plate-slide-back-v2":         "slide the plate to the back",
+    "plate-slide-side-v2":         "slide the plate to the side",
+    "plate-slide-v2":              "slide the plate",
+    "push-back-v2":                "push the object to the back",
+    "push-v2":                     "push the object",
+    "push-wall-v2":                "push the object to the wall target",
+    "reach-v2":                    "reach the target",
+    "reach-wall-v2":               "reach the wall target",
+    "shelf-place-v2":              "place the object on the shelf",
+    "soccer-v2":                   "kick the soccer ball into the goal",
+    "stick-pull-v2":               "pull the stick",
+    "stick-push-v2":               "push the stick",
+    "sweep-into-v2":               "sweep the object into the bin",
+    "sweep-v2":                    "sweep the object",
+    "window-close-v2":             "close the window",
+    "window-open-v2":              "open the window",
 }
 
 NUM_TRAJECTORIES_PER_TASK = 50          # 每任务采集轨迹数
@@ -53,18 +140,58 @@ CAMERA_NAME = "corner2"                 # ['corner','corner2','corner3','corner4
 IMAGE_RESOLUTION = (256, 256)           # (H, W)
 OUTPUT_DIR = Path("/mnt/sda/datasets/metaworld")  # 输出根目录
 
-# 任务名 -> 专家策略
+# 任务名 -> 专家策略（与官方测试用例完全对齐）
 POLICY_MAPPING = {
     "assembly-v2": SawyerAssemblyV2Policy,
     "basketball-v2": SawyerBasketballV2Policy,
     "bin-picking-v2": SawyerBinPickingV2Policy,
     "box-close-v2": SawyerBoxCloseV2Policy,
     "button-press-topdown-v2": SawyerButtonPressTopdownV2Policy,
+    "button-press-topdown-wall-v2": SawyerButtonPressTopdownWallV2Policy,
     "button-press-v2": SawyerButtonPressV2Policy,
+    "button-press-wall-v2": SawyerButtonPressWallV2Policy,
     "coffee-button-v2": SawyerCoffeeButtonV2Policy,
     "coffee-pull-v2": SawyerCoffeePullV2Policy,
     "coffee-push-v2": SawyerCoffeePushV2Policy,
     "dial-turn-v2": SawyerDialTurnV2Policy,
+    "disassemble-v2": SawyerDisassembleV2Policy,
+    "door-close-v2": SawyerDoorCloseV2Policy,
+    "door-lock-v2": SawyerDoorLockV2Policy,
+    "door-open-v2": SawyerDoorOpenV2Policy,
+    "door-unlock-v2": SawyerDoorUnlockV2Policy,
+    "drawer-close-v2": SawyerDrawerCloseV2Policy,
+    "drawer-open-v2": SawyerDrawerOpenV2Policy,
+    "faucet-close-v2": SawyerFaucetCloseV2Policy,
+    "faucet-open-v2": SawyerFaucetOpenV2Policy,
+    "hammer-v2": SawyerHammerV2Policy,
+    "hand-insert-v2": SawyerHandInsertV2Policy,
+    "handle-press-side-v2": SawyerHandlePressSideV2Policy,
+    "handle-press-v2": SawyerHandlePressV2Policy,
+    "handle-pull-side-v2": SawyerHandlePullSideV2Policy,
+    "handle-pull-v2": SawyerHandlePullV2Policy,
+    "lever-pull-v2": SawyerLeverPullV2Policy,
+    "peg-insert-side-v2": SawyerPegInsertionSideV2Policy,
+    "peg-unplug-side-v2": SawyerPegUnplugSideV2Policy,
+    "pick-out-of-hole-v2": SawyerPickOutOfHoleV2Policy,
+    "pick-place-v2": SawyerPickPlaceV2Policy,
+    "pick-place-wall-v2": SawyerPickPlaceWallV2Policy,
+    "plate-slide-back-side-v2": SawyerPlateSlideBackSideV2Policy,
+    "plate-slide-back-v2": SawyerPlateSlideBackV2Policy,
+    "plate-slide-side-v2": SawyerPlateSlideSideV2Policy,
+    "plate-slide-v2": SawyerPlateSlideV2Policy,
+    "push-back-v2": SawyerPushBackV2Policy,
+    "push-v2": SawyerPushV2Policy,
+    "push-wall-v2": SawyerPushWallV2Policy,
+    "reach-v2": SawyerReachV2Policy,
+    "reach-wall-v2": SawyerReachWallV2Policy,
+    "shelf-place-v2": SawyerShelfPlaceV2Policy,
+    "soccer-v2": SawyerSoccerV2Policy,
+    "stick-pull-v2": SawyerStickPullV2Policy,
+    "stick-push-v2": SawyerStickPushV2Policy,
+    "sweep-into-v2": SawyerSweepIntoV2Policy,
+    "sweep-v2": SawyerSweepV2Policy,
+    "window-close-v2": SawyerWindowCloseV2Policy,
+    "window-open-v2": SawyerWindowOpenV2Policy,
 }
 # ------------------------------------- #
 
@@ -104,7 +231,7 @@ def collect_one_trajectory(
         # 绝对状态（世界系）
         states.append((obs[:4]).tolist())
 
-        # 与环境交互：仍然用专家动作，但不保存动作
+        # 与环境交互：使用专家策略动作（不保存动作）
         action = policy.get_action(obs)
         obs, _, done, info = env.step(np.asarray(action, dtype=np.float32))
         info_last = info
@@ -114,7 +241,7 @@ def collect_one_trajectory(
     return (int(info_last.get("success", 0)) == 1), len(states), states
 
 def main():
-    print("=== Meta-World v2 采集（最小化：不保存 action） ===")
+    print("=== Meta-World v2 采集（MT50：不保存 action） ===")
     print(f"输出目录: {OUTPUT_DIR.resolve()}")
     print(f"相机: {CAMERA_NAME}, 分辨率: {IMAGE_RESOLUTION}, 每任务轨迹数: {NUM_TRAJECTORIES_PER_TASK}\n")
 
@@ -147,7 +274,6 @@ def main():
                     camera_name=CAMERA_NAME,
                 )
 
-                # 构造仅含所需键的条目
                 traj_entry = {
                     "instruction": instruction,
                     "features": states,     # [[x,y,z,grip], ...] 世界坐标
@@ -165,7 +291,6 @@ def main():
                     try:
                         traj_dir.rmdir()
                     except OSError:
-                        # 目录可能非空，忽略
                         pass
                     attempt += 1
                     continue
