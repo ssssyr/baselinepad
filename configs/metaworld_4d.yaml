@@ -59,7 +59,7 @@ components:
   rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt"
 
   # Attention
-  attn_mask: true
+  attn_mask: false
 
   # Dynamics - Enable for MetaWorld
   dynamics: true

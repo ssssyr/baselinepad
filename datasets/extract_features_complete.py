@@ -80,99 +80,112 @@ def main(args):
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True)
     ])
 
-    # Load dataset info (action and state data)
-    print(f"Loading dataset info from {args.data_path}")
-    dataset_info_path = os.path.join(args.data_path, "dataset_info.json")
-    if not os.path.exists(dataset_info_path):
-        print(f"Warning: No dataset_info.json found at {dataset_info_path}")
-        print("Using dummy action data...")
-        # Create dummy data structure
-        json_all = [{"instruction": "press the button", "features": [[0,0,0,1]] * 1000, "action": [[0,0,0,1]] * 1000} for _ in range(50)]
-    else:
-        with open(dataset_info_path, "r") as f:
-            json_all = json.load(f)
-
-    # Get image directories
-    image_paths = sorted(glob(os.path.join(args.data_path, "class_*/*.png")))
-    if len(image_paths) == 0:
-        raise ValueError(f"No images found in {args.data_path}/class_*/")
-
-    print(f"Found {len(image_paths)} images in {len(json_all)} classes")
+    # Find all task subdirectories by looking for dataset_info.json
+    task_json_paths = sorted(glob(os.path.join(args.data_path, "*/dataset_info.json")))
+    if not task_json_paths:
+        raise ValueError(f"No 'dataset_info.json' found in any subdirectories of {args.data_path}. Please check your data structure.")
+    
+    print(f"Found {len(task_json_paths)} tasks to process.")
 
     vae.eval()
     model.eval()
 
-    train_steps = 0
-    dataset_info = []
+    # Global counters and lists for aggregating data from all tasks
+    global_train_steps = 0
+    global_episode_idx = 0
+    all_dataset_info = []
 
     with torch.no_grad():
-        for traj_id in range(len(json_all)):
-            # Create episode directory
-            episode_dir = os.path.join(args.features_path, f"episode{traj_id:07}")
-            os.makedirs(episode_dir, exist_ok=True)
+        # Outer loop: iterate over each task
+        for task_json_path in task_json_paths:
+            task_dir = os.path.dirname(task_json_path)
+            task_name = os.path.basename(task_dir)
+            print(f"\n{'='*60}\n--- Processing Task: {task_name} ---\n{'='*60}")
 
-            instruction = json_all[traj_id]["instruction"]
-            action_list = json_all[traj_id]["features"]  # Using features as action (should be "action" in proper data)
+            with open(task_json_path, "r") as f:
+                task_json_all = json.load(f)
+            
+            # Inner loop: iterate over each trajectory (episode) within the task
+            for traj_id_in_task, traj_data in enumerate(task_json_all):
+                # Create a unique directory for this episode using a global index
+                episode_dir = os.path.join(args.features_path, f"episode{global_episode_idx:07}")
+                os.makedirs(episode_dir, exist_ok=True)
 
-            # Process text embedding once per episode
-            text_inputs = tokenizer([instruction], padding=True, return_tensors="pt").to(device)
-            text_embeds = model(**text_inputs).text_embeds
-            text_embed_path = os.path.join(episode_dir, "text_clip.npy")
-            np.save(text_embed_path, text_embeds.cpu().numpy())
+                instruction = traj_data["instruction"]
+                # IMPORTANT: Check if your JSON has an 'action' field. If not, this will use 'features'.
+                action_list = traj_data.get("action", traj_data.get("features"))
+                if not action_list:
+                    print(f"  [Warning] No 'action' or 'features' found for episode {global_episode_idx}. Skipping.")
+                    continue
 
-            # Get images for this episode
-            episode_images = sorted(glob(os.path.join(args.data_path, f"class_{traj_id:06d}/*.png")))
+                # Process and save text embedding once per episode
+                text_inputs = tokenizer([instruction], padding=True, return_tensors="pt").to(device)
+                text_embeds = model(**text_inputs).text_embeds
+                text_embed_path = os.path.join(episode_dir, "text_clip.npy")
+                np.save(text_embed_path, text_embeds.cpu().numpy())
 
-            print(f"Processing episode {traj_id}, instruction: '{instruction}', {len(episode_images)} images")
+                # Get all image paths for this specific trajectory
+                # The trajectory folder name in your data is `class_{index:06d}`
+                image_folder_path = os.path.join(task_dir, f"class_{traj_id_in_task:06d}")
+                episode_images = sorted(glob(os.path.join(image_folder_path, "*.png")))
 
-            for episode_steps, img_path in enumerate(episode_images):
-                # Load and preprocess image
-                img = Image.open(img_path).convert("RGB")
-                img_tensor = transform(img).unsqueeze(0).to(device)
+                if not episode_images:
+                    print(f"  [Warning] No images found in {image_folder_path} for episode {global_episode_idx}. Skipping.")
+                    continue
 
-                # Encode to latent
-                x = vae.encode(img_tensor).latent_dist.sample().mul_(0.18215)
+                print(f"  Processing episode {global_episode_idx} (Task: {task_name}, Traj: {traj_id_in_task}): '{instruction}', {len(episode_images)} images")
 
-                # Save features
-                feature_path = os.path.join(episode_dir, f"color_wrist_1_{episode_steps:04}.npy")
-                np.save(feature_path, x.cpu().numpy())
+                # Loop through each frame in the trajectory
+                for frame_idx, img_path in enumerate(episode_images):
+                    img = Image.open(img_path).convert("RGB")
+                    img_tensor = transform(img).unsqueeze(0).to(device)
 
-                # Get action and state data
-                if episode_steps < len(action_list):
-                    action = action_list[episode_steps]
-                    state = action_list[episode_steps]  # Use action as state if no separate state
-                else:
-                    # Default action/state if not available
-                    action = [0, 0, 0, 1]
-                    state = [0, 0, 0, 1]
+                    # Encode image to latent representation
+                    x = vae.encode(img_tensor).latent_dist.sample().mul_(0.18215)
 
-                # Add to dataset info
-                dataset_info.append({
-                    "idx": str(train_steps),
-                    "episode": str(traj_id),
-                    "frame": str(episode_steps),
-                    "wrist_1": f'episode{traj_id:07}/color_wrist_1_{episode_steps:04}.npy',
-                    "label": str(traj_id),
-                    "instruction": instruction,
-                    "ins_emb_path": f'episode{traj_id:07}/text_clip.npy',
-                    "action": action,
-                    "state": state
-                })
+                    # Save the latent vector
+                    feature_path = os.path.join(episode_dir, f"color_wrist_1_{frame_idx:04}.npy")
+                    np.save(feature_path, x.cpu().numpy())
 
-                train_steps += 1
+                    # Get action and state data for the current frame
+                    if frame_idx < len(action_list):
+                        action = action_list[frame_idx]
+                        state = action_list[frame_idx]  # Using action as state, adjust if you have separate state data
+                    else:
+                        action = [0, 0, 0, 1]  # Default value if action data is missing for a frame
+                        state = [0, 0, 0, 1]
 
-                if train_steps % 100 == 0:
-                    print(f"Processed {train_steps} steps...")
+                    # Append frame-level information to the global dataset list
+                    all_dataset_info.append({
+                        "idx": str(global_train_steps),
+                        "episode": str(global_episode_idx),
+                        "frame": str(frame_idx),
+                        "wrist_1": f'episode{global_episode_idx:07}/color_wrist_1_{frame_idx:04}.npy',
+                        "label": task_name, # Use task name as label
+                        "instruction": instruction,
+                        "ins_emb_path": f'episode{global_episode_idx:07}/text_clip.npy',
+                        "action": action,
+                        "state": state
+                    })
 
-    print(f"Feature extraction complete! Processed {train_steps} total frames.")
+                    global_train_steps += 1
 
-    # Save dataset metadata
-    print("Saving dataset metadata...")
-    with open(os.path.join(args.features_path, "dataset_rgb_s_d.json"), "w") as f:
-        json.dump(dataset_info, f, indent=2)
+                # Increment the global episode counter after processing all frames of a trajectory
+                global_episode_idx += 1
 
-    print(f"Dataset info saved to {os.path.join(args.features_path, 'dataset_rgb_s_d.json')}")
-    print(f"Total samples: {len(dataset_info)}")
+            if global_train_steps % 500 == 0 and global_train_steps > 0:
+                print(f"... processed {global_train_steps} total frames so far ...")
+
+    print(f"\nFeature extraction complete! Processed {global_train_steps} total frames from {global_episode_idx} episodes.")
+
+    # Save the aggregated dataset metadata
+    print("\nSaving final dataset metadata...")
+    final_json_path = os.path.join(args.features_path, "dataset_rgb_s_d.json")
+    with open(final_json_path, "w") as f:
+        json.dump(all_dataset_info, f, indent=2)
+
+    print(f"Dataset info saved to {final_json_path}")
+    print(f"Total samples: {len(all_dataset_info)}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
