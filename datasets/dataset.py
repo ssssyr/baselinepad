@@ -311,7 +311,7 @@ class RobotDataset(Dataset):
                 # 采集未来 H 帧，必须都存在（不补帧）
                 future_rgb, future_depth, future_action = [], [], []
                 valid = True
-                for i in range(1, H + 1):
+                for i in range(0, H + 1):
                     idx_f = t + i * S
                     if idx_f >= L:
                         valid = False
