@@ -380,7 +380,7 @@ def main(args):
     # Load optimizer and scheduler states for resume training
     if resume_checkpoint is not None and 'optimizer' in resume_checkpoint:
         opt.load_state_dict(resume_checkpoint['optimizer'])
-        if 'lr_scheduler' in resume_checkpoint:
+        if 'lr_scheduler' in resume_checkpoint and resume_checkpoint['lr_scheduler'] is not None:
             lr_scheduler.load_state_dict(resume_checkpoint['lr_scheduler'])
         if accelerator.is_main_process:
             print(f"✓ Restored optimizer and scheduler states")
@@ -623,8 +623,8 @@ def main(args):
                 if accelerator.is_main_process:
                     checkpoint = {
                         "model": model.module.state_dict() if accelerator.num_processes > 1 else model.state_dict(),
-                        "optimizer": optimizer.state_dict(),
-                        "lr_scheduler": lr_scheduler.state_dict(),
+                        "optimizer": opt.state_dict(),
+                        "lr_scheduler": lr_scheduler.state_dict() if lr_scheduler is not None else None,
                         "epoch": epoch,
                         "step": train_steps,
                         "args": args
