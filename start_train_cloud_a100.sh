@@ -19,7 +19,7 @@ echo "📍 Config:  $CONFIG_FILE"
 echo "🖥️  GPUs:    4,5,6,7 (A100)"
 
 # ---- 2) 数据与结果目录 ----
-FEATURE_PATH="/home/ct_24210860031/812datasets/SYR/feature_complete"  # 提取后的特征目录（含 dataset_rgb_s_d.json）
+FEATURE_PATH="/home/ct_24210860031/812datasets/SYR/metaworld_features"  # 提取后的特征目录（含 dataset_rgb_s_d.json）
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$SCRIPT_DIR/results/metaworld_a100_${TIMESTAMP}"
 
