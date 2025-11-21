@@ -47,7 +47,7 @@ echo "📦 Batch Size:   $PER_GPU_BATCH_SIZE per GPU → $TOTAL_BATCH_SIZE total
 # ---- 4.5) Checkpoint 恢复设置 ----
 CHECKPOINT_PATH=""
 echo ""
-RESUME_CHOICE="n"  # 直接设置为不恢复，跳过交互
+read -p "🔄 Do you want to resume from checkpoint? (y/n): " RESUME_CHOICE
 if [[ "$RESUME_CHOICE" =~ ^[Yy]$ ]]; then
     echo "📁 Please enter the full path to your checkpoint file:"
     echo "   Example: /home/ct_24210860031/812code/SYR/baselinepad/results/metaworld_a100_20251119_014323/000-DiT-XL-2-2025-11-19-01-43-46/checkpoints/0020000.pt"
@@ -139,7 +139,8 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT "$TRAIN_SCRIPT" \
   --use-wandb \
   --wandb-project "$WANDB_PROJECT" \
   --wandb-run-name "$WANDB_RUN_NAME" \
-  --dynamics
+  --dynamics \
+  ${CHECKPOINT_PATH:+--resume "$CHECKPOINT_PATH"}
 
 # ---- 10) 结束状态 ----
 EXIT_CODE=$?

@@ -285,6 +285,29 @@ def main(args):
                 print("✓ Re-initialized y_embedder for class-only guidance.")
     # ================================================================
 
+    # ==== Load checkpoint for resume training ====
+    start_epoch = 0
+    start_step = 0
+    if args.resume is not None:
+        if os.path.exists(args.resume):
+            checkpoint = torch.load(args.resume, map_location='cpu')
+            if 'model' in checkpoint:
+                model.load_state_dict(checkpoint['model'])
+                if 'epoch' in checkpoint:
+                    start_epoch = checkpoint['epoch']
+                if 'step' in checkpoint:
+                    start_step = checkpoint['step']
+                if accelerator.is_main_process:
+                    print(f"✓ Resumed from checkpoint: {args.resume}")
+                    print(f"✓ Starting from epoch {start_epoch}, step {start_step}")
+            else:
+                model.load_state_dict(checkpoint)
+                if accelerator.is_main_process:
+                    print(f"✓ Loaded model weights from: {args.resume}")
+        else:
+            raise FileNotFoundError(f"Resume checkpoint not found: {args.resume}")
+    # ====================================================
+
     model = model.to(device)
 
     if not args.without_ema:
@@ -634,6 +657,9 @@ if __name__ == "__main__":
     parser.add_argument("--eval-every", type=int)
     parser.add_argument("--ckpt-wrapper", action="store_true")
     parser.add_argument("--without-ema", action="store_true")
+
+    # Checkpoint resume
+    parser.add_argument("--resume", type=str, help="Path to checkpoint to resume from")
 
     # Init
     parser.add_argument("--dit-init", type=str)
