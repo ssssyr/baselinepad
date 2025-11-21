@@ -6,7 +6,7 @@
 # ======================================================
 training:
   # Paths
-  feature_path: "/home/ct_24210860031/812datasets/SYR/feature_complete"  # Path to MetaWorld data
+  feature_path: "/home/ct_24210860031/812datasets/SYR/metaworld_features"  # Path to MetaWorld data
   video_path: null
   results_dir: "results_metaworld_4d"
 
@@ -15,7 +15,7 @@ training:
   image_size: 256
   num_classes: 1000
   predict_horizon: 3    # Number of future frames to predict
-  skip_step: 4          # Steps to skip between frames
+  skip_step: 6          # Steps to skip between frames
 
   # Training Loop
   epochs: 1500
@@ -101,7 +101,7 @@ moe:
 #                  WandB Logging
 # ======================================================
 wandb:
-  use_wandb: true
+  use_wandb: false
   wandb_project: "metaworld-action-prediction"
   wandb_run_name: "metaworld_4d_action_pred"
 

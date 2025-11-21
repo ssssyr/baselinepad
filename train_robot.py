@@ -288,20 +288,22 @@ def main(args):
     # ==== Load checkpoint for resume training ====
     start_epoch = 0
     start_step = 0
+    resume_checkpoint = None
     if args.resume is not None:
         if os.path.exists(args.resume):
-            checkpoint = torch.load(args.resume, map_location='cpu')
-            if 'model' in checkpoint:
-                model.load_state_dict(checkpoint['model'])
-                if 'epoch' in checkpoint:
-                    start_epoch = checkpoint['epoch']
-                if 'step' in checkpoint:
-                    start_step = checkpoint['step']
+            resume_checkpoint = torch.load(args.resume, map_location='cpu')
+            if 'model' in resume_checkpoint:
+                model.load_state_dict(resume_checkpoint['model'])
+                if 'epoch' in resume_checkpoint:
+                    start_epoch = resume_checkpoint['epoch']
+                if 'step' in resume_checkpoint:
+                    start_step = resume_checkpoint['step']
                 if accelerator.is_main_process:
                     print(f"✓ Resumed from checkpoint: {args.resume}")
                     print(f"✓ Starting from epoch {start_epoch}, step {start_step}")
+                    print(f"✓ Action training will be {'enabled' if start_step >= args.action_loss_start else 'enabled after ' + str(args.action_loss_start - start_step) + ' steps'}")
             else:
-                model.load_state_dict(checkpoint)
+                model.load_state_dict(resume_checkpoint)
                 if accelerator.is_main_process:
                     print(f"✓ Loaded model weights from: {args.resume}")
         else:
@@ -375,8 +377,16 @@ def main(args):
     model.train()  # important! enables embedding dropout for classifier-free guidance
     model, opt, loader = accelerator.prepare(model, opt, loader)
 
+    # Load optimizer and scheduler states for resume training
+    if resume_checkpoint is not None and 'optimizer' in resume_checkpoint:
+        opt.load_state_dict(resume_checkpoint['optimizer'])
+        if 'lr_scheduler' in resume_checkpoint:
+            lr_scheduler.load_state_dict(resume_checkpoint['lr_scheduler'])
+        if accelerator.is_main_process:
+            print(f"✓ Restored optimizer and scheduler states")
+
     # Monitor vars
-    train_steps = 0
+    train_steps = start_step
     log_steps = 0
     running_loss = 0.0
     running_loss_a = 0.0
@@ -387,7 +397,7 @@ def main(args):
 
     if accelerator.is_main_process:
         logger.info(f"Training for {args.epochs} epochs...")
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         if accelerator.is_main_process:
             logger.info(f"Beginning epoch {epoch}...")
         if not args.dynamics:
@@ -613,6 +623,10 @@ def main(args):
                 if accelerator.is_main_process:
                     checkpoint = {
                         "model": model.module.state_dict() if accelerator.num_processes > 1 else model.state_dict(),
+                        "optimizer": optimizer.state_dict(),
+                        "lr_scheduler": lr_scheduler.state_dict(),
+                        "epoch": epoch,
+                        "step": train_steps,
                         "args": args
                     }
                     checkpoint_path = f"{checkpoint_dir}/{train_steps:07d}.pt"

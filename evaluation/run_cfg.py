@@ -1,5 +1,5 @@
 META_CONFIG = {
-    'ckpt_path': "/mnt/sda/syr/checkpoint/checkpoint1120/best_action_loss.pt", # 使用你的模型
+    'ckpt_path': "/home/syr/code/models/pad_bridge_pre/bridge_pre_mw_ft.pt", # 使用你的模型
     'vae_path': "/home/syr/code/models/sd-vae-ft-mse/", # 更新为正确的VAE路径
     'clip_path': "/home/syr/code/models/clip-vit-base-patch32/", # 更新为正确的CLIP路径
     'thirdview_camera': 'corner3',
