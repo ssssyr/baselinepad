@@ -72,6 +72,11 @@ echo "📊 WandB:       $WANDB_PROJECT / $WANDB_RUN_NAME"
 # ---- 6) 系统环境优化（可选）----
 export TORCH_CUDNN_V8_API_ENABLED=1
 export NCCL_DEBUG=WARN
+export NCCL_TIMEOUT=1800  # 30分钟超时
+export NCCL_IB_DISABLE=1  # 禁用InfiniBand
+export NCCL_P2P_DISABLE=1  # 禁用P2P
+export NCCL_SOCKET_IFNAME=eth0  # 使用以太网
+export NCCL_DEBUG_SUBSYS=ALL
 
 echo "================================================================"
 echo "🎯 Training Configuration Summary:"
@@ -123,18 +128,17 @@ echo "torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT $TRAIN_SCRI
 echo "  --config \"$CONFIG_FILE\" \\"
 echo "  --feature-path \"$FEATURE_PATH\" \\"
 echo "  --global-batch-size \"$TOTAL_BATCH_SIZE\" \\"
-
 echo "  --results-dir \"$RESULTS_DIR\" \\"
 echo "  --use-wandb \\"
 echo "  --wandb-project \"$WANDB_PROJECT\" \\"
 echo "  --wandb-run-name \"$WANDB_RUN_NAME\" \\"
-echo "  --dynamics"
+echo "  --dynamics \\"
+echo "  ${CHECKPOINT_PATH:+--resume \"$CHECKPOINT_PATH\"}"
 
 torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT "$TRAIN_SCRIPT" \
   --config "$CONFIG_FILE" \
   --feature-path "$FEATURE_PATH" \
   --global-batch-size "$TOTAL_BATCH_SIZE" \
-
   --results-dir "$RESULTS_DIR" \
   --use-wandb \
   --wandb-project "$WANDB_PROJECT" \
