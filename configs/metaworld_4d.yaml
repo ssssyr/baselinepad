@@ -38,8 +38,8 @@ training:
 
   # Logging and Checkpointing
   log_every: 100
-  eval_every: 10000  # 减少评估频率避免超时
-  ckpt_every: 5000
+  eval_every: 500000  # 减少评估频率避免超时
+  ckpt_every: 10000
   ckpt_wrapper: false
 
   # Resuming Training
