@@ -165,8 +165,14 @@ for selected_id, task in enumerate(task_list):
                 predict_img = agent.decode_rgb(rgb, samples) # np.array shape (256,256*3)
                 predict_img = add_bound(predict_img)
 
-            target = sample_a/agent.args.action_scale
-            target_xyz, target_gripper = target[0,0,:3], target[0,0,3] # target pose
+            # Use the first predicted step as the immediate target pose
+            if agent.args.action_steps > 0 and sample_a is not None:
+                a_seq = sample_a.reshape(agent.args.action_steps, agent.args.action_dim)  # (S,4)
+                target = a_seq[0] / agent.args.action_scale
+                target_xyz, target_gripper = target[:3], target[3]
+            else:
+                target = sample_a/agent.args.action_scale
+                target_xyz, target_gripper = target[0,0,:3], target[0,0,3] # target pose
             curr_xyz, curr_gripper = state[:3], state[3] # current pose
             
             # motion planner to reach the target pose, starting from the current pose

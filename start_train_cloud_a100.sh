@@ -73,10 +73,13 @@ echo "📊 WandB:       $WANDB_PROJECT / $WANDB_RUN_NAME"
 export TORCH_CUDNN_V8_API_ENABLED=1
 export NCCL_DEBUG=WARN
 export NCCL_TIMEOUT=1800  # 30分钟超时
-export NCCL_IB_DISABLE=1  # 禁用InfiniBand
-export NCCL_P2P_DISABLE=1  # 禁用P2P
-export NCCL_SOCKET_IFNAME=eth0  # 使用以太网
-export NCCL_DEBUG_SUBSYS=ALL
+# DSW 环境建议禁用 IB/P2P，并指定网卡，开启异步错误处理和阻塞等待，防止 NCCL 超时后集群乱序
+export NCCL_IB_DISABLE=1
+export NCCL_P2P_DISABLE=1
+export NCCL_SOCKET_IFNAME=eth0  # 按需改成实际网卡名
+export NCCL_ASYNC_ERROR_HANDLING=1
+export NCCL_BLOCKING_WAIT=1
+export OMP_NUM_THREADS=1
 
 echo "================================================================"
 echo "🎯 Training Configuration Summary:"

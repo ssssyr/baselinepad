@@ -294,7 +294,7 @@ class RobotDataset(Dataset):
             if "frame" in frames[0]:
                 frames = sorted(frames, key=lambda x: int(x["frame"]))
             L = len(frames)
-            # 需要 t + i*S (i=1..H) 全都在同一 episode 内
+            # 需要 t + i*S (i=1..H) 全都在同一 episode 内（首个目标是 t+S）
             max_t = L - H * S - 1
             if max_t < 0:
                 continue
@@ -308,10 +308,10 @@ class RobotDataset(Dataset):
                 if getattr(args, "action_steps", 0) > 0 and ("state" not in cond):
                     continue
 
-                # 采集未来 H 帧，必须都存在（不补帧）
+                # 采集未来 H 帧，必须都存在（不补帧），首帧是 t+S 而非当前帧
                 future_rgb, future_depth, future_action = [], [], []
                 valid = True
-                for i in range(0, H):
+                for i in range(1, H + 1):
                     idx_f = t + i * S
                     if idx_f >= L:
                         valid = False
