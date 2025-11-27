@@ -369,6 +369,11 @@ def main(args):
             
             if accelerator.is_main_process:
                 logger.info(f"Using cosine annealing scheduler: warmup_steps={warmup_steps}, total_steps={total_steps}, min_lr_ratio={min_lr_ratio}")
+        elif scheduler_type == 'constant':
+            # 恒定学习率调度器（不做衰减）
+            lr_scheduler = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=lambda _: 1.0)
+            if accelerator.is_main_process:
+                logger.info("Using constant LR scheduler (no decay)")
 
     # Prepare for distributed
     if not args.without_ema:
@@ -387,6 +392,13 @@ def main(args):
             and resume_checkpoint['lr_scheduler'] is not None
         ):
             lr_scheduler.load_state_dict(resume_checkpoint['lr_scheduler'])
+        # 如果希望用当前配置的学习率继续训练，重置优化器中的 lr/initial_lr
+        if getattr(args, 'learning_rate', None) is not None:
+            lr_override = float(args.learning_rate)
+            for pg in opt.param_groups:
+                pg['lr'] = lr_override
+                if 'initial_lr' in pg:
+                    pg['initial_lr'] = lr_override
         if accelerator.is_main_process:
             print(f"✓ Restored optimizer and scheduler states")
 

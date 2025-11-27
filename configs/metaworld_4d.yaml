@@ -31,10 +31,10 @@ training:
   adam_beta2: 0.999     # AdamW beta2 parameter
 
   # Learning Rate Scheduler Settings
-  use_lr_scheduler: false        # Enable learning rate scheduler
-  scheduler_type: "cosine"      # Type of scheduler: "cosine", "linear", "constant"
-  warmup_steps: 5000           # 较短 warmup，配合总步数收敛到 ~3e5
-  min_lr_ratio: 0.01           # Minimum learning rate as ratio of initial lr (1% of original)
+  use_lr_scheduler: false       # 关闭调度，学习率保持常数
+  scheduler_type: "constant"
+  warmup_steps: 0
+  min_lr_ratio: 1.0
 
   # Logging and Checkpointing
   log_every: 100
