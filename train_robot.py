@@ -380,7 +380,12 @@ def main(args):
     # Load optimizer and scheduler states for resume training
     if resume_checkpoint is not None and 'optimizer' in resume_checkpoint:
         opt.load_state_dict(resume_checkpoint['optimizer'])
-        if 'lr_scheduler' in resume_checkpoint and resume_checkpoint['lr_scheduler'] is not None:
+        # 只有当当前构建了 lr_scheduler 且 checkpoint 中存在其状态时才恢复
+        if (
+            lr_scheduler is not None
+            and 'lr_scheduler' in resume_checkpoint
+            and resume_checkpoint['lr_scheduler'] is not None
+        ):
             lr_scheduler.load_state_dict(resume_checkpoint['lr_scheduler'])
         if accelerator.is_main_process:
             print(f"✓ Restored optimizer and scheduler states")
