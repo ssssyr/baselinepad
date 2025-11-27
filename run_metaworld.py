@@ -81,6 +81,7 @@ def motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, imag
     
     # start motion planner with max 50 steps
     motion_steps = 50
+    success_flag = False
     for i in range(motion_steps):                
         a = -np.ones(4)
         if stage == 0: # moving to target pose with a constant velocity
@@ -97,6 +98,11 @@ def motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, imag
             image_3.append(img_all)
             curr_xyz,curr_gripper = env._get_obs()[:3], env._get_obs()[3]
 
+            # early break if env already reports success
+            if info.get("success", 0):
+                success_flag = True
+                break
+
             # check if the target pose is reached
             if stage==0 and (np.linalg.norm(target_xyz-curr_xyz) < 0.005 or curr_xyz[2]<0.05):
                 stage += 1 if grasp_moment else motion_steps
@@ -109,11 +115,17 @@ def motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, imag
                 if predict_img is not None:
                     img_all= merge_img(img,predict_img,img_word)
                 image_3.append(img_all)
+                if info.get("success", 0):
+                    success_flag = True
+                    break
                 stage += 1
             else:
                 break
         else:
             break
+    # If success happened mid-loop, ensure the returned info reflects it
+    if success_flag:
+        info["success"] = 1.0
     return info,img
 
 
