@@ -33,7 +33,7 @@ NUM_GPUS=4
 MASTER_PORT=${PORT:-$(shuf -i 29500-49151 -n 1)}
 echo "🔌 Master Port:  $MASTER_PORT"
 
-# 每卡 batch 与全局 batch（传给 --global-batch-size；脚本内会按 GPU 数切分）
+# 每卡 batch 与全局 batch（仅用于日志展示，真实数值以 YAML/config 为准）
 PER_GPU_BATCH_SIZE=16
 TOTAL_BATCH_SIZE=$((PER_GPU_BATCH_SIZE * NUM_GPUS))
 echo "📦 Batch Size:   $PER_GPU_BATCH_SIZE per GPU → $TOTAL_BATCH_SIZE total"
@@ -130,7 +130,6 @@ echo "Command:"
 echo "torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT $TRAIN_SCRIPT \\"
 echo "  --config \"$CONFIG_FILE\" \\"
 echo "  --feature-path \"$FEATURE_PATH\" \\"
-echo "  --global-batch-size \"$TOTAL_BATCH_SIZE\" \\"
 echo "  --results-dir \"$RESULTS_DIR\" \\"
 echo "  --use-wandb \\"
 echo "  --wandb-project \"$WANDB_PROJECT\" \\"
@@ -141,7 +140,6 @@ echo "  ${CHECKPOINT_PATH:+--resume \"$CHECKPOINT_PATH\"}"
 torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT "$TRAIN_SCRIPT" \
   --config "$CONFIG_FILE" \
   --feature-path "$FEATURE_PATH" \
-  --global-batch-size "$TOTAL_BATCH_SIZE" \
   --results-dir "$RESULTS_DIR" \
   --use-wandb \
   --wandb-project "$WANDB_PROJECT" \
