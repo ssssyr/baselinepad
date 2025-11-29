@@ -23,7 +23,7 @@ from PIL import Image
 import torch
 import torch.nn as nn
 import torch.distributed as dist
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedDataParallelKwargs
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
@@ -202,7 +202,8 @@ def main(args):
     """Trains a new DiT model."""
     assert torch.cuda.is_available(), "Training currently requires at least one GPU."
 
-    accelerator = Accelerator()
+    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
     device = accelerator.device
 
     # Setup an experiment folder:
