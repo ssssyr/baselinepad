@@ -532,7 +532,10 @@ class DiT(nn.Module):
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
         for block in self.blocks:
-            x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c) if self.args.ckpt_wrapper else block(x, c)   # (N, T, D)
+            if self.args.ckpt_wrapper:
+                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c, use_reentrant=False)
+            else:
+                x = block(x, c)   # (N, T, D)
         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
         # print("x_shape", x.shape)
         if self.args.action_steps>0 or self.args.use_depth:
