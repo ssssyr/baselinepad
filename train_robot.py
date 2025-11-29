@@ -408,6 +408,7 @@ def main(args):
     running_loss = 0.0
     running_loss_a = 0.0
     running_loss_d = 0.0
+    running_moe_aux = 0.0
     start_time = time()
     eval_batch = None
     best_action_loss = 1e8
@@ -476,6 +477,12 @@ def main(args):
             if args.use_depth and "loss_depth" in loss_dict:
                 loss = loss + loss_dict["loss_depth"].mean()
 
+            moe_aux_metric = None
+            if getattr(args, "use_moe", False):
+                aux_tensor = accelerator.unwrap_model(model).get_last_aux_loss()
+                if aux_tensor is not None:
+                    moe_aux_metric = aux_tensor.item()
+
             opt.zero_grad()
             accelerator.backward(loss)
             opt.step()
@@ -493,6 +500,8 @@ def main(args):
                 running_loss_a += loss_dict["loss_a"].mean().item() * args.action_loss_lambda * (1.0 if train_steps > args.action_loss_start else 0.0)
             if args.use_depth and "loss_depth" in loss_dict:
                 running_loss_d += loss_dict["loss_depth"].mean().item()
+            if moe_aux_metric is not None:
+                running_moe_aux += moe_aux_metric
 
             log_steps += 1
             train_steps += 1
@@ -504,13 +513,17 @@ def main(args):
                 avg_loss = (running_loss / log_steps)
                 avg_loss_a = (running_loss_a / log_steps) if log_steps > 0 else 0.0
                 avg_loss_d = (running_loss_d / log_steps) if log_steps > 0 else 0.0
+                avg_moe_aux = (running_moe_aux / log_steps) if (log_steps > 0 and getattr(args, "use_moe", False)) else 0.0
 
                 if accelerator.is_main_process:
                     # Get current learning rate
                     current_lr = opt.param_groups[0]['lr']
-                    logger.info(f"(step={train_steps:07d}) Train Loss image: {avg_loss:.6f}, "
-                                f"Train Loss action:{avg_loss_a:.6f}, Train Loss depth:{avg_loss_d:.6f}, "
-                                f"Train Steps/Sec: {steps_per_sec:.2f}, LR: {current_lr:.2e}")
+                    log_msg = (f"(step={train_steps:07d}) Train Loss image: {avg_loss:.6f}, "
+                               f"Train Loss action:{avg_loss_a:.6f}, Train Loss depth:{avg_loss_d:.6f}, ")
+                    if getattr(args, "use_moe", False):
+                        log_msg += f"MoE aux loss:{avg_moe_aux:.6f}, "
+                    log_msg += f"Train Steps/Sec: {steps_per_sec:.2f}, LR: {current_lr:.2e}"
+                    logger.info(log_msg)
                     if args.use_wandb:
                         import wandb
                         log_payload = {
@@ -522,11 +535,14 @@ def main(args):
                             log_payload["train/loss_action"] = avg_loss_a
                         if args.use_depth:
                             log_payload["train/loss_depth"] = avg_loss_d
+                        if getattr(args, "use_moe", False):
+                            log_payload["train/moe_aux_loss"] = avg_moe_aux
                         wandb.log(log_payload, step=train_steps)
 
                 running_loss = 0.0
                 running_loss_a = 0.0
                 running_loss_d = 0.0
+                running_moe_aux = 0.0
                 log_steps = 0
                 start_time = time()
 
@@ -724,6 +740,13 @@ if __name__ == "__main__":
     # Loss
     parser.add_argument("--action-loss-lambda", type=float)
     parser.add_argument("--action-loss-start", type=int)
+
+    # MoE
+    parser.add_argument("--use-moe", action="store_true")
+    parser.add_argument("--num-experts", type=int)
+    parser.add_argument("--moe-top-k", type=int)
+    parser.add_argument("--aux-loss-weight", type=float)
+    parser.add_argument("--router-z-loss-weight", type=float)
 
     # Wandb
     parser.add_argument("--use-wandb", action="store_true")

@@ -103,7 +103,7 @@ def motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, imag
                 break
 
             # check if the target pose is reached
-            if stage==0 and (np.linalg.norm(target_xyz-curr_xyz) < 0.005 or curr_xyz[2]<0.05):
+            if stage==0 and np.linalg.norm(target_xyz-curr_xyz) < 0.005:
                 stage += 1 if grasp_moment else motion_steps
 
         elif stage < 20: # grasping stage

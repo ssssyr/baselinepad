@@ -16,6 +16,8 @@ import math
 from timm.models.vision_transformer import PatchEmbed, Mlp
 import torch.nn.functional as F
 
+from moe_blocks import SparseMoeBlock
+
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
@@ -176,23 +178,49 @@ class DiTBlock(nn.Module):
     """
     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
     """
-    def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, **block_kwargs):
+    def __init__(
+        self,
+        hidden_size,
+        num_heads,
+        mlp_ratio=4.0,
+        use_moe=False,
+        moe_num_experts=8,
+        moe_top_k=2,
+        moe_aux_loss=0.01,
+        **block_kwargs,
+    ):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs)
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        mlp_hidden_dim = int(hidden_size * mlp_ratio)
-        approx_gelu = lambda: nn.GELU(approximate="tanh")
-        self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
+        self.use_moe = use_moe
+        if self.use_moe:
+            self.mlp = SparseMoeBlock(
+                embed_dim=hidden_size,
+                mlp_ratio=mlp_ratio,
+                num_experts=moe_num_experts,
+                num_experts_per_tok=moe_top_k,
+                aux_loss_alpha=moe_aux_loss,
+            )
+        else:
+            mlp_hidden_dim = int(hidden_size * mlp_ratio)
+            approx_gelu = lambda: nn.GELU(approximate="tanh")
+            self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
             nn.Linear(hidden_size, 6 * hidden_size, bias=True)
         )
+        self.last_aux_loss = None
 
     def forward(self, x, c):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
         x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
-        x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
+        mlp_input = modulate(self.norm2(x), shift_mlp, scale_mlp)
+        x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input)
+        if self.use_moe:
+            self.last_aux_loss = getattr(self.mlp, "last_aux_loss", None)
+        else:
+            self.last_aux_loss = None
         return x
 
 
@@ -293,6 +321,10 @@ class DiT(nn.Module):
         self.args = args
         self.patch_size = patch_size
         self.hidden_size = hidden_size
+        self.use_moe = bool(getattr(args, "use_moe", False))
+        self.moe_num_experts = int(getattr(args, "num_experts", 8))
+        self.moe_top_k = int(getattr(args, "moe_top_k", 2))
+        self.moe_aux_loss = float(getattr(args, "aux_loss_weight", 0.01))
         x_embedder_channels = in_channels if not args.dynamics else in_channels+in_channels*args.predict_horizon
 
         self.x_embedder = PatchEmbed(input_size, patch_size, x_embedder_channels, hidden_size, bias=True)
@@ -340,7 +372,16 @@ class DiT(nn.Module):
             attn_mask = torch.ones((token_num, token_num), dtype=torch.bool)
             attn_mask[:rgb_l,rgb_l:] = False
         self.blocks = nn.ModuleList([
-            DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio, attn_mask=attn_mask) for _ in range(depth)
+            DiTBlock(
+                hidden_size,
+                num_heads,
+                mlp_ratio=mlp_ratio,
+                attn_mask=attn_mask,
+                use_moe=self.use_moe,
+                moe_num_experts=self.moe_num_experts,
+                moe_top_k=self.moe_top_k,
+                moe_aux_loss=self.moe_aux_loss,
+            ) for _ in range(depth)
         ])
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels, self.args)
         self.initialize_weights()
@@ -513,6 +554,22 @@ class DiT(nn.Module):
         half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
         eps = torch.cat([half_eps, half_eps], dim=0)
         return torch.cat([eps, rest], dim=1)
+
+    def get_last_aux_loss(self):
+        """
+        Aggregate the most recent auxiliary loss produced by MoE blocks.
+        Returns a scalar tensor or None if MoE is disabled.
+        """
+        if not self.use_moe:
+            return None
+        aux_values = []
+        for block in self.blocks:
+            aux_val = getattr(block, "last_aux_loss", None)
+            if aux_val is not None:
+                aux_values.append(aux_val)
+        if not aux_values:
+            return None
+        return torch.stack(aux_values).sum()
 
 
 #################################################################################

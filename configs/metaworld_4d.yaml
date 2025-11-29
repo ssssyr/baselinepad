@@ -6,7 +6,7 @@
 # ======================================================
 training:
   # Paths
-  feature_path: "/home/ct_24210860031/812datasets/SYR/metaworld_features"  # Path to MetaWorld data
+  feature_path: "/home/ct_24210860031/812datasets/SYR/feature_complete"  # Path to MetaWorld data
   video_path: null
   results_dir: "results_metaworld_4d"
 
@@ -18,8 +18,8 @@ training:
   skip_step: 4          # Steps to skip between frames
 
   # Training Loop
-  epochs: 120            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
-  global_batch_size: 256
+  epochs: 500            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
+  global_batch_size: 128
   global_seed: 42
   num_workers: 8
   without_ema: false
