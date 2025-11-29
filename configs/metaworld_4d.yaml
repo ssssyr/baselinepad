@@ -91,11 +91,13 @@ components:
 #                  MoE Settings
 # ======================================================
 moe:
-  use_moe: false            # Disable Mixture of Experts
-  num_experts: 8
+  use_moe: true             # Enable Mixture of Experts
+  num_experts: 4
   moe_top_k: 2
   aux_loss_weight: 0.01
   router_z_loss_weight: 0.001
+  moe_start_layer: 14       # use MoE from layer index 14 (i.e., back 14 layers)
+  moe_shared_experts: 1     # number of shared fallback experts per block
 
 # ======================================================
 #                  WandB Logging

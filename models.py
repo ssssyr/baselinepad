@@ -187,6 +187,7 @@ class DiTBlock(nn.Module):
         moe_num_experts=8,
         moe_top_k=2,
         moe_aux_loss=0.01,
+        shared_experts=2,
         **block_kwargs,
     ):
         super().__init__()
@@ -201,6 +202,7 @@ class DiTBlock(nn.Module):
                 num_experts=moe_num_experts,
                 num_experts_per_tok=moe_top_k,
                 aux_loss_alpha=moe_aux_loss,
+                n_shared_experts=shared_experts,
             )
         else:
             mlp_hidden_dim = int(hidden_size * mlp_ratio)
@@ -325,6 +327,9 @@ class DiT(nn.Module):
         self.moe_num_experts = int(getattr(args, "num_experts", 8))
         self.moe_top_k = int(getattr(args, "moe_top_k", 2))
         self.moe_aux_loss = float(getattr(args, "aux_loss_weight", 0.01))
+        self.moe_shared_experts = int(getattr(args, "moe_shared_experts", 2))
+        moe_start_layer = getattr(args, "moe_start_layer", None)
+        self.moe_start_layer = None if moe_start_layer in (None, "") else int(moe_start_layer)
         x_embedder_channels = in_channels if not args.dynamics else in_channels+in_channels*args.predict_horizon
 
         self.x_embedder = PatchEmbed(input_size, patch_size, x_embedder_channels, hidden_size, bias=True)
@@ -371,18 +376,23 @@ class DiT(nn.Module):
             token_num = rgb_l + a_l + depth_l
             attn_mask = torch.ones((token_num, token_num), dtype=torch.bool)
             attn_mask[:rgb_l,rgb_l:] = False
-        self.blocks = nn.ModuleList([
-            DiTBlock(
-                hidden_size,
-                num_heads,
-                mlp_ratio=mlp_ratio,
-                attn_mask=attn_mask,
-                use_moe=self.use_moe,
-                moe_num_experts=self.moe_num_experts,
-                moe_top_k=self.moe_top_k,
-                moe_aux_loss=self.moe_aux_loss,
-            ) for _ in range(depth)
-        ])
+        blocks = []
+        for layer_idx in range(depth):
+            block_uses_moe = self.use_moe and (self.moe_start_layer is None or layer_idx >= self.moe_start_layer)
+            blocks.append(
+                DiTBlock(
+                    hidden_size,
+                    num_heads,
+                    mlp_ratio=mlp_ratio,
+                    attn_mask=attn_mask,
+                    use_moe=block_uses_moe,
+                    moe_num_experts=self.moe_num_experts,
+                    moe_top_k=self.moe_top_k,
+                    moe_aux_loss=self.moe_aux_loss,
+                    shared_experts=self.moe_shared_experts,
+                )
+            )
+        self.blocks = nn.ModuleList(blocks)
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels, self.args)
         self.initialize_weights()
 

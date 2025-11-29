@@ -747,6 +747,8 @@ if __name__ == "__main__":
     parser.add_argument("--moe-top-k", type=int)
     parser.add_argument("--aux-loss-weight", type=float)
     parser.add_argument("--router-z-loss-weight", type=float)
+    parser.add_argument("--moe-start-layer", type=int)
+    parser.add_argument("--moe-shared-experts", type=int)
 
     # Wandb
     parser.add_argument("--use-wandb", action="store_true")
