@@ -1,6 +1,5 @@
 import mediapy
 import numpy as np
-from PIL import Image
 import json
 from PIL import Image
 import matplotlib.pyplot as plt
@@ -16,6 +15,7 @@ from metaworld.envs import (ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE, ALL_V2_ENVIRONM
 
 from evaluation.agent import DiffusionAgent
 from evaluation.run_cfg import INSTRUCTIONS, META_CONFIG
+
 
 def set_random_seed(seed=None):
     """Set random seed for reproducibility or randomness"""
@@ -71,10 +71,11 @@ def motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, imag
     # stage (1) If grasp, then close the gripper
     stage = 0 
     grasp_moment = False
+    target_xyz = np.array(target_xyz, dtype=np.float32)
+    curr_xyz = np.array(curr_xyz, dtype=np.float32)
 
     # check whether the gripper should closed
     if np.abs(target_gripper - curr_gripper) > 0.2:
-        # target_xyz[2] -=0.04 if target_xyz[2]>0.1 else 0.01
         grasp_moment = True
         print("prepare grasp!!")
     
@@ -84,9 +85,11 @@ def motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, imag
     for i in range(motion_steps):                
         a = -np.ones(4)
         if stage == 0: # moving to target pose with a constant velocity
-            if target_gripper < 0.75 and curr_gripper < 0.75:
+            dist = np.linalg.norm(target_xyz-curr_xyz)
+            xy_dist = np.linalg.norm(target_xyz[:2]-curr_xyz[:2])
+            if target_gripper < curr_gripper - 0.05 and xy_dist < 0.015:
                 a[3] = 0.7
-            velocity = 0.6 if np.linalg.norm(target_xyz-curr_xyz) > 0.03 else 0.3
+            velocity = 0.6 if dist > 0.03 else 0.3
             a[:3] = (target_xyz-curr_xyz)/np.linalg.norm(target_xyz-curr_xyz)*velocity
 
             # step the env
@@ -103,7 +106,9 @@ def motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, imag
                 break
 
             # check if the target pose is reached
-            if stage==0 and (np.linalg.norm(target_xyz-curr_xyz) < 0.005 or curr_xyz[2]<0.05):
+            xy_dist = np.linalg.norm(target_xyz[:2]-curr_xyz[:2])
+            z_close = abs(target_xyz[2]-curr_xyz[2]) < 0.01
+            if stage==0 and xy_dist < 0.005 and (not grasp_moment or z_close):
                 stage += 1 if grasp_moment else motion_steps
 
         elif stage < 20: # grasping stage
@@ -159,15 +164,20 @@ for selected_id, task in enumerate(task_list):
         obs = env.reset()
         img = env.render(offscreen=True, camera_name=thirdview, resolution=[224,224],depth=False)
         # image_3.append(img)
+        hold_grip_value = META_CONFIG.get('hold_grip_value', 0.35)
+        object_grasped = False
+        close_trigger_delta = META_CONFIG.get('close_trigger_delta', 0.12)
+        hold_hysteresis = META_CONFIG.get('hold_hysteresis', 0.02)
+
+        grasp_task_list = META_CONFIG.get('grasp_tasks', ['assembly-v2','basketball-v2','pick-place-v2'])
+        requires_grasp = task in grasp_task_list
+
         for plan_step in tqdm(range(META_CONFIG['max_steps'])):
             # prepare input data
-            grasp_moment = False
-            state = obs
+            state = env._get_obs()[:4]
             rgb = img
             depth =  depth if use_depth else None
             text = INSTRUCTIONS[task]
-            # state = env._get_obs()[:4]
-            state = env._get_obs()[:4]
 
             # plan next target with PAD agent
             samples,sample_a,sample_depth = agent.action(text, rgb, depth, state)
@@ -176,43 +186,85 @@ for selected_id, task in enumerate(task_list):
                 predict_img = agent.decode_rgb(rgb, samples) # np.array shape (256,256*3)
                 predict_img = add_bound(predict_img)
 
-            # Use the first predicted step as the immediate target pose
+            # Build the target trajectory from all predicted steps
+            target_frames = []
             if agent.args.action_steps > 0 and sample_a is not None:
                 a_seq = sample_a.reshape(agent.args.action_steps, agent.args.action_dim)  # (S,4)
-                target = a_seq[0] / agent.args.action_scale
-                target_xyz, target_gripper = target[:3], target[3]
+                for frame_idx in range(a_seq.shape[0]):
+                    target_frames.append(a_seq[frame_idx] / agent.args.action_scale)
             else:
                 target = sample_a/agent.args.action_scale
-                target_xyz, target_gripper = target[0,0,:3], target[0,0,3] # target pose
-            curr_xyz, curr_gripper = state[:3], state[3] # current pose
-            
-            # motion planner to reach the target pose, starting from the current pose
-            info, img = motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, image_3, thirdview, predict_img=predict_img, img_word=img_word)
+                if target.ndim >= 2 and target.shape[1] >= 3:
+                    for frame_idx in range(target.shape[1]):
+                        target_frames.append(target[0, frame_idx, :])
+                else:
+                    target_frames.append(target[0,0,:])
 
-            # 针对所有任务的详细进度显示
-            obj_to_target = info.get('obj_to_target', 0.0)
-            near_object = info.get('near_object', 0.0)
-            grasp_success = info.get('grasp_success', 0.0)
-            grasp_reward = info.get('grasp_reward', 0.0)
-            in_place_reward = info.get('in_place_reward', 0.0)
+            last_info = None
+            delta_limit = META_CONFIG.get('delta_limit', 0.02)
+            grasp_acquired = False
+            grasp_acquired = False
+            for target_idx, target in enumerate(target_frames):
+                curr_xyz, curr_gripper = state[:3], state[3]
+                target_xyz = np.array(target[:3], dtype=np.float32)
+                target_gripper = target[3]
+                if requires_grasp and not object_grasped:
+                    closing_intent = target_gripper < curr_gripper - close_trigger_delta
+                    already_closed = curr_gripper < hold_grip_value + hold_hysteresis
+                    if closing_intent or already_closed:
+                        object_grasped = True
 
-            # 计算进度百分比（对于有obj_to_target的任务）
+                if requires_grasp and object_grasped and target_gripper > hold_grip_value:
+                    target_gripper = hold_grip_value
+
+                print(f"🎯 Selected step={target_idx} action: {target}, current state: {state[:4]}")
+                print(f"Δpose (xyz): {target[:3] - state[:3]}, Δgripper: {target[3] - state[3]}")
+
+                delta = target_xyz - curr_xyz
+                delta = np.clip(delta, -delta_limit, delta_limit)
+                target_xyz = curr_xyz + delta
+
+                info, img = motion_planner(
+                    target_xyz, target_gripper, curr_xyz, curr_gripper,
+                    env, image_3, thirdview, predict_img=predict_img, img_word=img_word
+                )
+                last_info = info
+
+                obs = env._get_obs()
+                state = obs[:4]
+                post_gripper = state[3]
+                rgb = env.render(offscreen=True, camera_name=thirdview, resolution=[224,224],depth=False)
+
+                grasp_reward = info.get("grasp_reward", 0)
+                grasp_acquired = False
+                if requires_grasp:
+                    grasp_acquired = info.get("grasp_success", 0) > 0.2 or grasp_reward > 0.2 or post_gripper < hold_grip_value + hold_hysteresis
+                if requires_grasp and grasp_acquired:
+                    object_grasped = True
+                if info.get("success", 0):
+                    break
+
+            metrics_source = last_info if last_info is not None else {}
+            obj_to_target = metrics_source.get('obj_to_target', 0.0)
+            near_object = metrics_source.get('near_object', 0.0)
+            grasp_success = metrics_source.get('grasp_success', 0.0)
+            grasp_reward = metrics_source.get('grasp_reward', 0.0)
+            in_place_reward = metrics_source.get('in_place_reward', 0.0)
+
             if obj_to_target > 0:
-                progress_pct = max(0, min(100, (1.0 - obj_to_target/0.15) * 100))  # 假设初始距离约0.15米
-                print(f"Step {plan_step+1}: success={info['success']:.1f}, obj_to_target={obj_to_target:.4f}m ({progress_pct:.1f}%)")
+                progress_pct = max(0, min(100, (1.0 - obj_to_target/0.15) * 100))
+                print(f"Step {plan_step+1}: success={metrics_source.get('success',0):.1f}, obj_to_target={obj_to_target:.4f}m ({progress_pct:.1f}%)")
             else:
-                print(f"Step {plan_step+1}: success={info['success']:.1f}, obj_to_target=N/A")
+                print(f"Step {plan_step+1}: success={metrics_source.get('success',0):.1f}, obj_to_target=N/A")
 
             print(f"  └─ near_object={near_object:.3f}, grasp_success={grasp_success:.3f}, grasp_reward={grasp_reward:.3f}, in_place_reward={in_place_reward:.3f}")
 
-            # 详细的成功判断和反馈
-            if plan_step == META_CONFIG['max_steps'] - 1:  # 最后一步
-                if info['success']:
+            if plan_step == META_CONFIG['max_steps'] - 1:
+                if metrics_source.get('success', 0):
                     print(f"🎉 {task} traj_idx {traj_idx} FULL SUCCESS!")
                     if obj_to_target > 0:
                         print(f"   Final obj_to_target: {obj_to_target:.4f}m")
                 elif obj_to_target > 0:
-                    # 根据任务类型设置不同的进度阈值
                     if task.startswith('button-press'):
                         threshold = 0.06
                     elif task.startswith('basketball'):
@@ -226,15 +278,13 @@ for selected_id, task in enumerate(task_list):
                         print(f"⚠️ {task} traj_idx {traj_idx} Need more progress (obj_to_target: {obj_to_target:.4f}m)")
                         print(f"   Target: <=0.04m, Current progress: {threshold - obj_to_target:.4f}m away")
                 else:
-                    print(f"📊 {task} traj_idx {traj_idx} COMPLETED (success={info['success']:.1f})")
+                    print(f"📊 {task} traj_idx {traj_idx} COMPLETED (success={metrics_source.get('success',0):.1f})")
 
-            if info['success']:
+            if metrics_source.get('success', 0):
                 print(task, traj_idx, 'success')
                 success_num[selected_id] += 1
                 break
         
-        # save video
-        # ckpt_path = ckpt_path.split('.')[0]
         video_dir = META_CONFIG['video_dir']
         os.makedirs(f'{video_dir}/rollout_metaworld', exist_ok=True)
         mediapy.write_video(f'{video_dir}/rollout_metaworld/{task}_{traj_idx}.mp4', image_3, fps=20)
@@ -242,6 +292,3 @@ for selected_id, task in enumerate(task_list):
 
 for i in range(len(task_list)):
     print(task_list[i], success_num[i])
-
-# running command:
-# CUDA_VISIBLE_DEVICES=1 python sample_pose.py

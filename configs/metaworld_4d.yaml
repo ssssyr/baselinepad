@@ -19,7 +19,7 @@ training:
 
   # Training Loop
   epochs: 120            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
-  global_batch_size: 128
+  global_batch_size: 256
   global_seed: 42
   num_workers: 8
   without_ema: false
@@ -78,7 +78,7 @@ components:
   # Action Conditioning - DISABLED to enable proper temporal prediction
   action_steps: 3           # Number of action steps to predict/condition on
   action_dim: 4             # 4-DOF action space for MetaWorld
-  action_scale: 10.0        # Scaling factor for actions
+  action_scale: 1        # Scaling factor for actions
   absolute_action: true     # Use absolute actions instead of relative
   action_condition: true   # Disable action conditioning to enable temporal learning
   learnable_action_pos: false # Use fixed sin-cos positional embeddings for actions
