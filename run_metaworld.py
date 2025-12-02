@@ -138,7 +138,13 @@ ckpt_path = META_CONFIG['ckpt_path']
 use_depth = META_CONFIG['use_depth']
 
 # build agent
-agent = DiffusionAgent(ckpt_path=ckpt_path,vae_path=META_CONFIG['vae_path'], clip_path=META_CONFIG['clip_path'], denoise_steps=META_CONFIG['denoise_steps'])
+agent = DiffusionAgent(
+    ckpt_path=ckpt_path,
+    vae_path=META_CONFIG['vae_path'],
+    clip_path=META_CONFIG['clip_path'],
+    denoise_steps=META_CONFIG['denoise_steps'],
+    device_id=META_CONFIG.get('gpu_id', 0)
+)
 if META_CONFIG['visualize_prediction']:
     img_word = plot_word()
 else:

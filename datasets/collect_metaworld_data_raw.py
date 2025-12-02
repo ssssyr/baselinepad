@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Meta-World v2 数据采集脚本（MT50 全量：不保存 action）
-- 每个任务采集 N 条轨迹
-- 固定相机 'corner2'，离屏渲染 PNG 帧
+Meta-World v2 数据采集脚本（按钮任务专用：corner3相机视角）
+- 只采集与按钮按压相关的 5 个任务
+- 固定相机 'corner3'，离屏渲染 PNG 帧
 - 每条轨迹的 JSON 条目仅包含：
-    {
-      "instruction": <str>,
-      "features": [[x,y,z,grip], ...],   # 世界坐标下的绝对状态
-      "success": 0/1
-    }
+   {
+     "instruction": <str>,
+     "features": [[x,y,z,grip], ...],   # 世界坐标下的绝对状态
+     "success": 0/1
+   }
 """
 
 import os
@@ -80,77 +80,81 @@ from metaworld.policies import (
 
 # ---------------- 配 置 ---------------- #
 
-# 50 个 v2 任务 → 简洁英文指令（可按需改成中文）
+# Meta-World v2 完整任务集合 → 简洁英文指令（可按需改成中文）
 TASKS_TO_COLLECT: Dict[str, str] = {
-    "assembly-v2":                 "assemble the peg",
-    "basketball-v2":               "shoot the basketball into the hoop",
-    "bin-picking-v2":              "pick the object from the bin",
-    "box-close-v2":                "close the box lid",
-    "button-press-topdown-v2":     "press the button from the top",
-    "button-press-topdown-wall-v2":"press the wall-mounted button from the top",
-    "button-press-v2":             "press the button",
-    "button-press-wall-v2":        "press the wall-mounted button",
-    "coffee-button-v2":            "press the coffee machine button",
-    "coffee-pull-v2":              "pull the coffee mug",
-    "coffee-push-v2":              "push the coffee mug",
-    "dial-turn-v2":                "turn the dial",
-    "disassemble-v2":              "disassemble the object",
-    "door-close-v2":               "close the door",
-    "door-lock-v2":                "lock the door",
-    "door-open-v2":                "open the door",
-    "door-unlock-v2":              "unlock the door",
-    "drawer-close-v2":             "close the drawer",
-    "drawer-open-v2":              "open the drawer",
-    "faucet-close-v2":             "close the faucet",
-    "faucet-open-v2":              "open the faucet",
-    "hammer-v2":                   "hammer the object",
-    "hand-insert-v2":              "insert the hand into the slot",
-    "handle-press-side-v2":        "press the side handle",
-    "handle-press-v2":             "press the handle",
-    "handle-pull-side-v2":         "pull the side handle",
-    "handle-pull-v2":              "pull the handle",
-    "lever-pull-v2":               "pull the lever",
-    "peg-insert-side-v2":          "insert the peg from the side",
-    "peg-unplug-side-v2":          "unplug the side peg",
-    "pick-out-of-hole-v2":         "pick the object out of the hole",
-    "pick-place-v2":               "pick and place the object",
-    "pick-place-wall-v2":          "pick and place the object to the wall target",
-    "plate-slide-back-side-v2":    "slide the plate back from the side",
-    "plate-slide-back-v2":         "slide the plate to the back",
-    "plate-slide-side-v2":         "slide the plate to the side",
-    "plate-slide-v2":              "slide the plate",
-    "push-back-v2":                "push the object to the back",
-    "push-v2":                     "push the object",
-    "push-wall-v2":                "push the object to the wall target",
-    "reach-v2":                    "reach the target",
-    "reach-wall-v2":               "reach the wall target",
-    "shelf-place-v2":              "place the object on the shelf",
-    "soccer-v2":                   "kick the soccer ball into the goal",
-    "stick-pull-v2":               "pull the stick",
-    "stick-push-v2":               "push the stick",
-    "sweep-into-v2":               "sweep the object into the bin",
-    "sweep-v2":                    "sweep the object",
-    "window-close-v2":             "close the window",
-    "window-open-v2":              "open the window",
+    "button-press-v2":                "press the button",
+    "button-press-wall-v2":           "press the wall-mounted button",
+    "button-press-topdown-v2":         "press the button from the top",
+    "button-press-topdown-wall-v2":    "press the wall-mounted button from the top",
+    "coffee-button-v2":                "press the coffee machine button",
+
+    # === 其他任务 ===
+    "assembly-v2":                     "assemble the peg",
+    "basketball-v2":                   "shoot the basketball into the hoop",
+    "bin-picking-v2":                  "pick the object from the bin",
+    "box-close-v2":                    "close the box lid",
+    "coffee-pull-v2":                  "pull the coffee mug",
+    "coffee-push-v2":                  "push the coffee mug",
+    "dial-turn-v2":                    "turn the dial",
+    "disassemble-v2":                  "disassemble the object",
+    "door-close-v2":                   "close the door",
+    "door-lock-v2":                    "lock the door",
+    "door-open-v2":                    "open the door",
+    "door-unlock-v2":                  "unlock the door",
+    "drawer-close-v2":                 "close the drawer",
+    "drawer-open-v2":                  "open the drawer",
+    "faucet-close-v2":                 "close the faucet",
+    "faucet-open-v2":                  "open the faucet",
+    "hammer-v2":                       "hammer object",
+    "hand-insert-v2":                  "insert hand into slot",
+    "handle-press-side-v2":            "press side handle",
+    "handle-press-v2":                 "press the handle",
+    "handle-pull-side-v2":             "pull side handle",
+    "handle-pull-v2":                  "pull the handle",
+    "lever-pull-v2":                   "pull the lever",
+    "peg-insert-side-v2":              "insert peg from side",
+    "peg-unplug-side-v2":              "unplug side peg",
+    "pick-out-of-hole-v2":             "pick object out of hole",
+    "pick-place-v2":                   "pick and place object",
+    "pick-place-wall-v2":              "pick and place object to wall target",
+    "plate-slide-back-side-v2":        "slide plate back from side",
+    "plate-slide-back-v2":             "slide plate to back",
+    "plate-slide-side-v2":             "slide plate to side",
+    "plate-slide-v2":                  "slide plate",
+    "push-back-v2":                    "push object to back",
+    "push-v2":                         "push object",
+    "push-wall-v2":                    "push object to wall target",
+    "reach-v2":                        "reach target",
+    "reach-wall-v2":                   "reach wall target",
+    "shelf-place-v2":                  "place object on shelf",
+    "soccer-v2":                       "kick soccer ball into goal",
+    "stick-pull-v2":                   "pull stick",
+    "stick-push-v2":                   "push stick",
+    "sweep-into-v2":                  "sweep object into bin",
+    "sweep-v2":                        "sweep object",
+    "window-close-v2":                 "close the window",
+    "window-open-v2":                  "open the window",
 }
 
 NUM_TRAJECTORIES_PER_TASK = 50          # 每任务采集轨迹数
 KEEP_ONLY_SUCCESS = False               # 仅保留成功轨迹（会重采直到够数）
-CAMERA_NAME = "corner2"                 # ['corner','corner2','corner3','corner4','topview','behindGripper','gripperPOV']
+CAMERA_NAME = "corner3"                 # ['corner','corner2','corner3','corner4','topview','behindGripper','gripperPOV']
 IMAGE_RESOLUTION = (256, 256)           # (H, W)
-OUTPUT_DIR = Path("/mnt/sda/datasets/metaworld")  # 输出根目录
+OUTPUT_DIR = Path("/mnt/sda/datasets/metaworldcorner3")  # 输出根目录
 
 # 任务名 -> 专家策略（与官方测试用例完全对齐）
 POLICY_MAPPING = {
+    "button-press-v2": SawyerButtonPressV2Policy,
+    "button-press-wall-v2": SawyerButtonPressWallV2Policy,
+    "button-press-topdown-v2": SawyerButtonPressTopdownV2Policy,
+    "button-press-topdown-wall-v2": SawyerButtonPressTopdownWallV2Policy,
+    "coffee-button-v2": SawyerCoffeeButtonV2Policy,
+
+    # === 其他任务 ===
     "assembly-v2": SawyerAssemblyV2Policy,
     "basketball-v2": SawyerBasketballV2Policy,
     "bin-picking-v2": SawyerBinPickingV2Policy,
     "box-close-v2": SawyerBoxCloseV2Policy,
-    "button-press-topdown-v2": SawyerButtonPressTopdownV2Policy,
-    "button-press-topdown-wall-v2": SawyerButtonPressTopdownWallV2Policy,
-    "button-press-v2": SawyerButtonPressV2Policy,
-    "button-press-wall-v2": SawyerButtonPressWallV2Policy,
-    "coffee-button-v2": SawyerCoffeeButtonV2Policy,
     "coffee-pull-v2": SawyerCoffeePullV2Policy,
     "coffee-push-v2": SawyerCoffeePushV2Policy,
     "dial-turn-v2": SawyerDialTurnV2Policy,
@@ -241,27 +245,27 @@ def collect_one_trajectory(
     return (int(info_last.get("success", 0)) == 1), len(states), states
 
 def main():
-    print("=== Meta-World v2 采集（MT50：不保存 action） ===")
+    print("=== Meta-World v2 按压任务数据采集 ===")
     print(f"输出目录: {OUTPUT_DIR.resolve()}")
     print(f"相机: {CAMERA_NAME}, 分辨率: {IMAGE_RESOLUTION}, 每任务轨迹数: {NUM_TRAJECTORIES_PER_TASK}")
-    print(f"总任务数: {len(TASKS_TO_COLLECT)}\n")
+    print(f"按钮任务数: {len(TASKS_TO_COLLECT)}\n")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     for task_idx, (task_name, instruction) in enumerate(TASKS_TO_COLLECT.items()):
         print(f"\n[{task_idx+1}/{len(TASKS_TO_COLLECT)}] 开始处理任务: {task_name}")
         env_key = task_name + "-goal-observable"
-        
+
         # 检查策略映射
         if task_name not in POLICY_MAPPING:
             print(f"⚠️ 跳过 {task_name}: 未找到专家策略")
             continue
-            
+
         # 检查环境类
         if env_key not in ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE:
             print(f"⚠️ 跳过 {task_name}: 环境类 {env_key} 不存在")
             continue
-            
+
         print(f"✓ 任务 {task_name} 检查通过，开始采集...")
 
         policy = POLICY_MAPPING[task_name]()
@@ -320,7 +324,7 @@ def main():
         print(f"✅ {task_name}: 保存 {saved} 条轨迹到 {task_dir}")
         print(f"任务 {task_name} 完成，准备进行下一个任务...")
 
-    print(f"\n=== 全部 {len(TASKS_TO_COLLECT)} 个任务完成 ===")
+    print(f"\n=== 全部 {len(TASKS_TO_COLLECT)} 个按钮任务完成 ===")
 
 if __name__ == "__main__":
     main()

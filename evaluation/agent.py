@@ -11,7 +11,7 @@ import cv2
 import matplotlib.pyplot as plt
 
 class DiffusionAgent():
-    def __init__(self, ckpt_path, vae_path="/cephfs/shared/llm/sd-vae-ft-mse", clip_path="/cephfs/shared/llm/clip-vit-base-patch32",denoise_steps=200):
+    def __init__(self, ckpt_path, vae_path="/cephfs/shared/llm/sd-vae-ft-mse", clip_path="/cephfs/shared/llm/clip-vit-base-patch32",denoise_steps=200, device_id=0):
         # 安全加载模型，添加argparse.Namespace到安全全局列表
         torch.serialization.add_safe_globals([argparse.Namespace])
 
@@ -48,7 +48,10 @@ class DiffusionAgent():
                 setattr(self.args, attr, False)
         # if not hasattr(self.args, "action_condition"):
         #     self.args.action_condition = False
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            self.device = torch.device(f"cuda:{device_id}")
+        else:
+            self.device = torch.device("cpu")
 
         print("load dit")
         self.latent_size = args.image_size // 8
@@ -250,5 +253,4 @@ if __name__ == "__main__":
     agent.decode(rgb, samples)
     
         
-
 

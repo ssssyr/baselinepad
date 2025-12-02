@@ -19,11 +19,11 @@ echo "📍 Config:  $CONFIG_FILE"
 echo "🖥️  GPUs:    4,5,6,7 (A100)"
 
 # ---- 2) 数据与结果目录 ----
-FEATURE_PATH="/home/ct_24210860031/812datasets/SYR/metaworld_features"  # 提取后的特征目录（含 dataset_rgb_s_d.json）
+# 从配置文件中读取feature_path，确保与yaml配置一致
+FEATURE_PATH=$(python3 -c "import yaml; config = yaml.safe_load(open('$CONFIG_FILE')); print(config['training']['feature_path'])" 2>/dev/null || echo "/home/ct_24210860031/812datasets/SYR/feature_complete")
+echo "🔍 Feature path from config: $FEATURE_PATH"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$SCRIPT_DIR/results/metaworld_a100_${TIMESTAMP}"
-
-echo "📁 Data Path:    $FEATURE_PATH"
 echo "💾 Results Dir:  $RESULTS_DIR"
 mkdir -p "$RESULTS_DIR"
 
