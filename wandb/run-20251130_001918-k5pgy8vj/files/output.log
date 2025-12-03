@@ -1,0 +1,59 @@
+✓ Successfully loaded & adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+Missing keys after load (ok if due to config changes): 231
+Unexpected keys after load: 56
+[[34m2025-11-30 00:19:41[0m] DiT Parameters: 1,476,301,944
+length of dataset 176129
+[[34m2025-11-30 00:19:44[0m] Global batch size 64 num_processes (4)
+[[34m2025-11-30 00:19:44[0m] Dataset contains 176,129 images (/home/ct_24210860031/812datasets/SYR/metaworld_features)
+[[34m2025-11-30 00:19:47[0m] Training for 500 epochs...
+[[34m2025-11-30 00:19:47[0m] Beginning epoch 0...
+/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/_dynamo/eval_frame.py:600: UserWarning: torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly. In version 2.4 we will raise an exception if use_reentrant is not passed. use_reentrant=False is recommended, but if you need to preserve the current default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
+  return fn(*args, **kwargs)
+/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/checkpoint.py:295: FutureWarning: `torch.cpu.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cpu', args...)` instead.
+  with torch.enable_grad(), device_autocast_ctx, torch.cpu.amp.autocast(**ctx.cpu_autocast_kwargs):  # type: ignore[attr-defined]
+Traceback (most recent call last):
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 782, in <module>
+    main(args)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 488, in main
+    accelerator.backward(loss)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/accelerate/accelerator.py", line 2740, in backward
+    loss.backward(**kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/_tensor.py", line 521, in backward
+    torch.autograd.backward(
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/__init__.py", line 289, in backward
+    _engine_run_backward(
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/function.py", line 306, in apply
+    return user_fn(self, *args)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/checkpoint.py", line 313, in backward
+    torch.autograd.backward(outputs_with_grad, args_with_grad)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/__init__.py", line 289, in backward
+    _engine_run_backward(
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+RuntimeError: Expected to mark a variable ready only once. This error is caused by one of the following reasons: 1) Use of a module parameter outside the `forward` function. Please make sure model parameters are not shared across multiple concurrent forward-backward passes. or try to use _set_static_graph() as a workaround if this module graph does not change during training loop.2) Reused parameters in multiple reentrant backward passes. For example, if you use multiple `checkpoint` functions to wrap the same part of your model, it would result in the same set of parameters been used by different reentrant backward passes multiple times, and hence marking a variable ready multiple times. DDP does not support such use cases in default. You can try to use _set_static_graph() as a workaround if your module graph does not change over iterations.
+Parameter at index 455 with name blocks.27.mlp.shared_experts.down_proj.weight has been marked as ready twice. This means that multiple autograd engine  hooks have fired for this particular parameter during this iteration.
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 782, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 488, in main
+[rank0]:     accelerator.backward(loss)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/accelerate/accelerator.py", line 2740, in backward
+[rank0]:     loss.backward(**kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/_tensor.py", line 521, in backward
+[rank0]:     torch.autograd.backward(
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/__init__.py", line 289, in backward
+[rank0]:     _engine_run_backward(
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+[rank0]:     return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/function.py", line 306, in apply
+[rank0]:     return user_fn(self, *args)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/utils/checkpoint.py", line 313, in backward
+[rank0]:     torch.autograd.backward(outputs_with_grad, args_with_grad)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/__init__.py", line 289, in backward
+[rank0]:     _engine_run_backward(
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+[rank0]:     return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[rank0]: RuntimeError: Expected to mark a variable ready only once. This error is caused by one of the following reasons: 1) Use of a module parameter outside the `forward` function. Please make sure model parameters are not shared across multiple concurrent forward-backward passes. or try to use _set_static_graph() as a workaround if this module graph does not change during training loop.2) Reused parameters in multiple reentrant backward passes. For example, if you use multiple `checkpoint` functions to wrap the same part of your model, it would result in the same set of parameters been used by different reentrant backward passes multiple times, and hence marking a variable ready multiple times. DDP does not support such use cases in default. You can try to use _set_static_graph() as a workaround if your module graph does not change over iterations.
+[rank0]: Parameter at index 455 with name blocks.27.mlp.shared_experts.down_proj.weight has been marked as ready twice. This means that multiple autograd engine  hooks have fired for this particular parameter during this iteration.

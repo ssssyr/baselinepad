@@ -1,0 +1,34 @@
+{"time":"2025-11-30T00:22:11.482398174+08:00","level":"INFO","msg":"stream: starting","core version":"0.22.3"}
+{"time":"2025-11-30T00:22:12.813599611+08:00","level":"INFO","msg":"stream: created new stream","id":"3vwkew4x"}
+{"time":"2025-11-30T00:22:12.813704315+08:00","level":"INFO","msg":"handler: started","stream_id":"3vwkew4x"}
+{"time":"2025-11-30T00:22:12.813939315+08:00","level":"INFO","msg":"stream: started","id":"3vwkew4x"}
+{"time":"2025-11-30T00:22:12.813954032+08:00","level":"INFO","msg":"sender: started","stream_id":"3vwkew4x"}
+{"time":"2025-11-30T00:22:12.813955898+08:00","level":"INFO","msg":"writer: started","stream_id":"3vwkew4x"}
+{"time":"2025-12-01T18:53:35.349664597+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/syr965948079-fudan-university-school-of-management/metaworld-action-prediction/3vwkew4x/file_stream\": dial tcp: lookup api.wandb.ai on 172.16.0.10:53: read udp 172.20.4.128:44510->172.16.0.10:53: i/o timeout"}
+{"time":"2025-12-01T19:01:09.512741728+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": net/http: request canceled (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-01T19:02:36.619139895+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/syr965948079-fudan-university-school-of-management/metaworld-action-prediction/3vwkew4x/file_stream\": read tcp 172.20.4.128:60044->35.186.228.49:443: read: connection timed out"}
+{"time":"2025-12-02T01:29:11.441815782+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": net/http: request canceled (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-02T05:03:57.437133442+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": net/http: request canceled (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-02T10:08:04.926107817+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/syr965948079-fudan-university-school-of-management/metaworld-action-prediction/3vwkew4x/file_stream\": unexpected EOF"}
+{"time":"2025-12-02T10:08:59.95111206+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/syr965948079-fudan-university-school-of-management/metaworld-action-prediction/3vwkew4x/file_stream\": unexpected EOF"}
+{"time":"2025-12-02T15:35:55.752612393+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/syr965948079-fudan-university-school-of-management/metaworld-action-prediction/3vwkew4x/file_stream\": unexpected EOF"}
+{"time":"2025-12-02T15:36:01.451238862+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-02T15:45:31.834745098+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": net/http: request canceled (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-02T15:46:03.331943979+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": http2: server sent GOAWAY and closed the connection; LastStreamID=679, ErrCode=NO_ERROR, debug=\"max_age\""}
+{"time":"2025-12-02T15:47:01.852409016+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-02T15:47:34.062525371+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": net/http: request canceled (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-02T18:36:32.699406839+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-02T19:11:47.828846105+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": net/http: request canceled (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-02T19:12:33.940601131+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/syr965948079-fudan-university-school-of-management/metaworld-action-prediction/3vwkew4x/file_stream\": read tcp 172.20.4.128:34574->35.186.228.49:443: read: connection reset by peer"}
+{"time":"2025-12-02T19:32:07.483017399+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/syr965948079-fudan-university-school-of-management/metaworld-action-prediction/3vwkew4x/file_stream\": dial tcp: lookup api.wandb.ai on 172.16.0.10:53: server misbehaving"}
+{"time":"2025-12-02T19:32:13.916804046+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/syr965948079-fudan-university-school-of-management/metaworld-action-prediction/3vwkew4x/file_stream\": dial tcp: lookup api.wandb.ai on 172.16.0.10:53: server misbehaving"}
+{"time":"2025-12-02T19:32:33.168905094+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-02T19:33:05.433169519+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-03T00:41:19.143837006+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded"}
+{"time":"2025-12-03T00:41:51.601611526+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-03T00:42:25.665059509+08:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": net/http: request canceled (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-12-03T01:34:32.789600544+08:00","level":"INFO","msg":"stream: closing","id":"3vwkew4x"}
+{"time":"2025-12-03T01:34:35.630840588+08:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-12-03T01:34:36.563741807+08:00","level":"INFO","msg":"handler: closed","stream_id":"3vwkew4x"}
+{"time":"2025-12-03T01:34:36.563917394+08:00","level":"INFO","msg":"sender: closed","stream_id":"3vwkew4x"}
+{"time":"2025-12-03T01:34:36.563945095+08:00","level":"INFO","msg":"stream: closed","id":"3vwkew4x"}

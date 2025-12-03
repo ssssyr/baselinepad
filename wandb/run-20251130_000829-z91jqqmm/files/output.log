@@ -1,0 +1,85 @@
+✓ Successfully loaded & adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+Missing keys after load (ok if due to config changes): 231
+Unexpected keys after load: 56
+[[34m2025-11-30 00:08:51[0m] DiT Parameters: 1,476,301,944
+length of dataset 176129
+[[34m2025-11-30 00:08:54[0m] Global batch size 128 num_processes (4)
+[[34m2025-11-30 00:08:54[0m] Dataset contains 176,129 images (/home/ct_24210860031/812datasets/SYR/metaworld_features)
+[[34m2025-11-30 00:08:56[0m] Training for 500 epochs...
+[[34m2025-11-30 00:08:56[0m] Beginning epoch 0...
+Traceback (most recent call last):
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 782, in <module>
+    main(args)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 473, in main
+    loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+    return super().training_losses(self._wrap_model(model), *args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 801, in training_losses
+    model_output = model(x_t, t, **model_kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 129, in __call__
+    return self.model(x, new_ts, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1636, in forward
+    else self._run_ddp_forward(*inputs, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1454, in _run_ddp_forward
+    return self.module(*inputs, **kwargs)  # type: ignore[index]
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 535, in forward
+    x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c) if self.args.ckpt_wrapper else block(x, c)   # (N, T, D)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 221, in forward
+    x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/moe_blocks.py", line 200, in forward
+    output = output + self.shared_experts(identity)
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 38.00 MiB. GPU 0 has a total capacity of 79.35 GiB of which 24.19 MiB is free. Process 4937 has 79.32 GiB memory in use. Of the allocated memory 69.21 GiB is allocated by PyTorch, and 8.37 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 782, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 473, in main
+[rank0]:     loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+[rank0]:     return super().training_losses(self._wrap_model(model), *args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 801, in training_losses
+[rank0]:     model_output = model(x_t, t, **model_kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 129, in __call__
+[rank0]:     return self.model(x, new_ts, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1636, in forward
+[rank0]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1454, in _run_ddp_forward
+[rank0]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 535, in forward
+[rank0]:     x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c) if self.args.ckpt_wrapper else block(x, c)   # (N, T, D)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 221, in forward
+[rank0]:     x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/moe_blocks.py", line 200, in forward
+[rank0]:     output = output + self.shared_experts(identity)
+[rank0]: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 38.00 MiB. GPU 0 has a total capacity of 79.35 GiB of which 24.19 MiB is free. Process 4937 has 79.32 GiB memory in use. Of the allocated memory 69.21 GiB is allocated by PyTorch, and 8.37 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

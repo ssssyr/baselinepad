@@ -1,0 +1,43 @@
+✓ Successfully loaded & adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+Missing keys after load (ok if due to config changes): 7
+/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py:294: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  resume_checkpoint = torch.load(args.resume, map_location='cpu')
+✓ Resumed from checkpoint: /home/ct_24210860031/812code/SYR/baselinepad/results/metaworld_a100_20251125_202915/000-DiT-XL-2-2025-11-25-20-31-04/checkpoints/0165000.pt
+✓ Starting from epoch 59, step 165000
+✓ Action training will be enabled
+[[34m2025-11-27 00:21:47[0m] DiT Parameters: 677,401,464
+length of dataset 176129
+[[34m2025-11-27 00:21:53[0m] Global batch size 64 num_processes (4)
+[[34m2025-11-27 00:21:53[0m] Dataset contains 176,129 images (/home/ct_24210860031/812datasets/SYR/metaworld_features)
+[[34m2025-11-27 00:21:53[0m] Using cosine annealing scheduler: warmup_steps=5000, total_steps=165120, min_lr_ratio=0.01
+✓ Restored optimizer and scheduler states
+[[34m2025-11-27 00:22:00[0m] Training for 60 epochs...
+[[34m2025-11-27 00:22:00[0m] Beginning epoch 59...
+[[34m2025-11-27 00:23:34[0m] (step=0165100) Train Loss image: 0.011404, Train Loss action:0.007273, Train Loss depth:0.000000, Train Steps/Sec: 1.06, LR: 3.00e-06
+[[34m2025-11-27 00:24:55[0m] (step=0165200) Train Loss image: 0.014098, Train Loss action:0.009180, Train Loss depth:0.000000, Train Steps/Sec: 1.25, LR: 3.00e-06
+[[34m2025-11-27 00:26:18[0m] (step=0165300) Train Loss image: 0.013078, Train Loss action:0.009598, Train Loss depth:0.000000, Train Steps/Sec: 1.20, LR: 3.00e-06
+[[34m2025-11-27 00:27:43[0m] (step=0165400) Train Loss image: 0.012205, Train Loss action:0.008322, Train Loss depth:0.000000, Train Steps/Sec: 1.18, LR: 3.00e-06
+[[34m2025-11-27 00:29:06[0m] (step=0165500) Train Loss image: 0.012622, Train Loss action:0.007493, Train Loss depth:0.000000, Train Steps/Sec: 1.21, LR: 3.00e-06
+[[34m2025-11-27 00:30:26[0m] (step=0165600) Train Loss image: 0.014182, Train Loss action:0.010672, Train Loss depth:0.000000, Train Steps/Sec: 1.25, LR: 3.01e-06
+[[34m2025-11-27 00:31:47[0m] (step=0165700) Train Loss image: 0.012976, Train Loss action:0.007852, Train Loss depth:0.000000, Train Steps/Sec: 1.23, LR: 3.01e-06
+[[34m2025-11-27 00:33:06[0m] (step=0165800) Train Loss image: 0.014708, Train Loss action:0.009576, Train Loss depth:0.000000, Train Steps/Sec: 1.26, LR: 3.01e-06
+[[34m2025-11-27 00:34:23[0m] (step=0165900) Train Loss image: 0.015037, Train Loss action:0.011057, Train Loss depth:0.000000, Train Steps/Sec: 1.31, LR: 3.02e-06
+[[34m2025-11-27 00:35:41[0m] (step=0166000) Train Loss image: 0.014630, Train Loss action:0.010614, Train Loss depth:0.000000, Train Steps/Sec: 1.27, LR: 3.02e-06
+[[34m2025-11-27 00:36:59[0m] (step=0166100) Train Loss image: 0.015224, Train Loss action:0.009738, Train Loss depth:0.000000, Train Steps/Sec: 1.29, LR: 3.03e-06
+[[34m2025-11-27 00:38:15[0m] (step=0166200) Train Loss image: 0.016216, Train Loss action:0.012614, Train Loss depth:0.000000, Train Steps/Sec: 1.31, LR: 3.03e-06
+[[34m2025-11-27 00:39:34[0m] (step=0166300) Train Loss image: 0.012727, Train Loss action:0.006854, Train Loss depth:0.000000, Train Steps/Sec: 1.27, LR: 3.04e-06
+[[34m2025-11-27 00:40:54[0m] (step=0166400) Train Loss image: 0.014076, Train Loss action:0.008482, Train Loss depth:0.000000, Train Steps/Sec: 1.26, LR: 3.05e-06
+[[34m2025-11-27 00:42:12[0m] (step=0166500) Train Loss image: 0.013426, Train Loss action:0.009660, Train Loss depth:0.000000, Train Steps/Sec: 1.28, LR: 3.05e-06
+[[34m2025-11-27 00:43:30[0m] (step=0166600) Train Loss image: 0.014433, Train Loss action:0.008858, Train Loss depth:0.000000, Train Steps/Sec: 1.28, LR: 3.06e-06
+[[34m2025-11-27 00:44:50[0m] (step=0166700) Train Loss image: 0.017399, Train Loss action:0.012719, Train Loss depth:0.000000, Train Steps/Sec: 1.25, LR: 3.07e-06
+[[34m2025-11-27 00:46:04[0m] (step=0166800) Train Loss image: 0.017037, Train Loss action:0.013478, Train Loss depth:0.000000, Train Steps/Sec: 1.35, LR: 3.08e-06
+[[34m2025-11-27 00:47:20[0m] (step=0166900) Train Loss image: 0.012894, Train Loss action:0.006682, Train Loss depth:0.000000, Train Steps/Sec: 1.31, LR: 3.09e-06
+[[34m2025-11-27 00:48:43[0m] (step=0167000) Train Loss image: 0.014753, Train Loss action:0.010999, Train Loss depth:0.000000, Train Steps/Sec: 1.22, LR: 3.10e-06
+[[34m2025-11-27 00:50:02[0m] (step=0167100) Train Loss image: 0.013616, Train Loss action:0.008609, Train Loss depth:0.000000, Train Steps/Sec: 1.26, LR: 3.11e-06
+[[34m2025-11-27 00:51:20[0m] (step=0167200) Train Loss image: 0.016236, Train Loss action:0.013460, Train Loss depth:0.000000, Train Steps/Sec: 1.29, LR: 3.12e-06
+[[34m2025-11-27 00:52:39[0m] (step=0167300) Train Loss image: 0.016901, Train Loss action:0.012553, Train Loss depth:0.000000, Train Steps/Sec: 1.26, LR: 3.14e-06
+[[34m2025-11-27 00:53:55[0m] (step=0167400) Train Loss image: 0.012306, Train Loss action:0.006701, Train Loss depth:0.000000, Train Steps/Sec: 1.31, LR: 3.15e-06
+[[34m2025-11-27 00:55:16[0m] (step=0167500) Train Loss image: 0.015156, Train Loss action:0.010366, Train Loss depth:0.000000, Train Steps/Sec: 1.23, LR: 3.16e-06
+[[34m2025-11-27 00:56:37[0m] (step=0167600) Train Loss image: 0.015503, Train Loss action:0.011765, Train Loss depth:0.000000, Train Steps/Sec: 1.25, LR: 3.18e-06
+[[34m2025-11-27 00:57:53[0m] (step=0167700) Train Loss image: 0.017011, Train Loss action:0.014388, Train Loss depth:0.000000, Train Steps/Sec: 1.31, LR: 3.19e-06
+[[34m2025-11-27 00:58:37[0m] Done!

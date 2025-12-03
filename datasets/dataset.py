@@ -294,10 +294,10 @@ class RobotDataset(Dataset):
             if "frame" in frames[0]:
                 frames = sorted(frames, key=lambda x: int(x["frame"]))
             L = len(frames)
-            # 需要 t + i*S (i=1..H) 全都在同一 episode 内（首个目标是 t+S）
-            max_t = L - H * S - 1
-            if max_t < 0:
-                continue
+            
+            # [MODIFIED] 允许遍历到轨迹末尾，不再因为未来帧不足而截断
+            # 原逻辑: max_t = L - H * S - 1
+            max_t = L - 1
 
             for t in range(0, max_t + 1):
                 cond = frames[t]
@@ -308,15 +308,18 @@ class RobotDataset(Dataset):
                 if getattr(args, "action_steps", 0) > 0 and ("state" not in cond):
                     continue
 
-                # 采集未来 H 帧，必须都存在（不补帧），首帧是 t+S 而非当前帧
+                # [MODIFIED] 采集未来 H 帧，越界则 Padding（重复最后一帧）
                 future_rgb, future_depth, future_action = [], [], []
                 valid = True
+                
                 for i in range(1, H + 1):
-                    idx_f = t + i * S
-                    if idx_f >= L:
-                        valid = False
-                        break
+                    # 计算未来索引
+                    raw_idx = t + i * S
+                    # [MODIFIED] 核心修改：如果索引超出，强制取最后一帧 (L-1)
+                    idx_f = min(raw_idx, L - 1)
+                    
                     step_f = frames[idx_f]
+                    
                     # 深度/动作可用性检查
                     if getattr(args, "use_depth", False) and ("depth_1" not in step_f):
                         valid = False
@@ -332,7 +335,7 @@ class RobotDataset(Dataset):
                         future_action.append(step_f["state"])
 
                 if not valid:
-                    continue  # 丢弃不完整样本
+                    continue  # 如果数据本身缺失（如缺少depth文件），仍然丢弃
 
                 # —— 写入样本 —— #
                 # 当前帧

@@ -1,0 +1,57 @@
+✓ Successfully loaded & adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+Missing keys after load (ok if due to config changes): 231
+Unexpected keys after load: 56
+[[34m2025-11-30 00:02:05[0m] DiT Parameters: 1,476,301,944
+length of dataset 176129
+[[34m2025-11-30 00:02:09[0m] Global batch size 128 num_processes (4)
+[[34m2025-11-30 00:02:09[0m] Dataset contains 176,129 images (/home/ct_24210860031/812datasets/SYR/metaworld_features)
+[[34m2025-11-30 00:02:10[0m] Training for 500 epochs...
+[[34m2025-11-30 00:02:10[0m] Beginning epoch 0...
+Traceback (most recent call last):
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 781, in <module>
+    main(args)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 472, in main
+    loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+    return super().training_losses(self._wrap_model(model), *args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 801, in training_losses
+    model_output = model(x_t, t, **model_kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 129, in __call__
+    return self.model(x, new_ts, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1632, in forward
+    inputs, kwargs = self._pre_forward(*inputs, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1523, in _pre_forward
+    if torch.is_grad_enabled() and self.reducer._rebuild_buckets():
+RuntimeError: Expected to have finished reduction in the prior iteration before starting a new one. This error indicates that your module has parameters that were not used in producing loss. You can enable unused parameter detection by passing the keyword argument `find_unused_parameters=True` to `torch.nn.parallel.DistributedDataParallel`, and by
+making sure all `forward` function outputs participate in calculating loss.
+If you already have done the above, then the distributed data parallel module wasn't able to locate the output tensors in the return value of your module's `forward` function. Please include the loss function and the structure of the return value of `forward` of your module when reporting this issue (e.g. list, dict, iterable).
+Parameter indices which did not receive grad for rank 0: 361 362 363 427 428 429
+ In addition, you can set the environment variable TORCH_DISTRIBUTED_DEBUG to either INFO or DETAIL to print out information about which particular parameters did not receive gradient on this rank as part of this error
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 781, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 472, in main
+[rank0]:     loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+[rank0]:     return super().training_losses(self._wrap_model(model), *args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 801, in training_losses
+[rank0]:     model_output = model(x_t, t, **model_kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 129, in __call__
+[rank0]:     return self.model(x, new_ts, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1632, in forward
+[rank0]:     inputs, kwargs = self._pre_forward(*inputs, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1523, in _pre_forward
+[rank0]:     if torch.is_grad_enabled() and self.reducer._rebuild_buckets():
+[rank0]: RuntimeError: Expected to have finished reduction in the prior iteration before starting a new one. This error indicates that your module has parameters that were not used in producing loss. You can enable unused parameter detection by passing the keyword argument `find_unused_parameters=True` to `torch.nn.parallel.DistributedDataParallel`, and by
+[rank0]: making sure all `forward` function outputs participate in calculating loss.
+[rank0]: If you already have done the above, then the distributed data parallel module wasn't able to locate the output tensors in the return value of your module's `forward` function. Please include the loss function and the structure of the return value of `forward` of your module when reporting this issue (e.g. list, dict, iterable).
+[rank0]: Parameter indices which did not receive grad for rank 0: 361 362 363 427 428 429
+[rank0]:  In addition, you can set the environment variable TORCH_DISTRIBUTED_DEBUG to either INFO or DETAIL to print out information about which particular parameters did not receive gradient on this rank as part of this error

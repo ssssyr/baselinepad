@@ -6,7 +6,7 @@
 # ======================================================
 training:
   # Paths
-  feature_path: "/home/ct_24210860031/812datasets/SYR/metaworld_features"  # Path to MetaWorld data
+  feature_path: "/home/ct_24210860031/812datasets/SYR/metaworldcorner3-features_button_press_v2"  # Path to MetaWorld data
   video_path: null
   results_dir: "results_metaworld_4d"
 
@@ -18,7 +18,7 @@ training:
   skip_step: 4          # Steps to skip between frames
 
   # Training Loop
-  epochs: 120            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
+  epochs: 3000            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
   global_batch_size: 256
   global_seed: 42
   num_workers: 8
@@ -39,7 +39,7 @@ training:
   # Logging and Checkpointing
   log_every: 100
   eval_every: 50000   # 更频繁评估以匹配更短训练
-  ckpt_every: 20000
+  ckpt_every: 10000
   ckpt_wrapper: false
 
   # Resuming Training
@@ -85,7 +85,7 @@ components:
 
   # Loss Configuration
   action_loss_lambda: 1.0   # Weight for the action prediction loss
-  action_loss_start: 5000  # Step to start applying action loss
+  action_loss_start: 2000  # Step to start applying action loss
 
 # ======================================================
 #                  MoE Settings

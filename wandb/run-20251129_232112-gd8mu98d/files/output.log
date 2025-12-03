@@ -1,0 +1,122 @@
+✓ Successfully loaded & adapted pretrained weights from /home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt
+Missing keys after load (ok if due to config changes): 7
+[[34m2025-11-29 23:21:25[0m] DiT Parameters: 677,401,464
+length of dataset 176129
+[[34m2025-11-29 23:21:28[0m] Global batch size 128 num_processes (4)
+[[34m2025-11-29 23:21:28[0m] Dataset contains 176,129 images (/home/ct_24210860031/812datasets/SYR/metaworld_features)
+[[34m2025-11-29 23:21:30[0m] Training for 500 epochs...
+[[34m2025-11-29 23:21:30[0m] Beginning epoch 0...
+[[34m2025-11-29 23:22:43[0m] (step=0000100) Train Loss image: 0.012977, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.36, LR: 1.00e-04
+[[34m2025-11-29 23:23:52[0m] (step=0000200) Train Loss image: 0.013175, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:25:00[0m] (step=0000300) Train Loss image: 0.010752, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.46, LR: 1.00e-04
+[[34m2025-11-29 23:26:08[0m] (step=0000400) Train Loss image: 0.009957, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.46, LR: 1.00e-04
+[[34m2025-11-29 23:27:16[0m] (step=0000500) Train Loss image: 0.009922, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.46, LR: 1.00e-04
+[[34m2025-11-29 23:28:25[0m] (step=0000600) Train Loss image: 0.008306, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:29:33[0m] (step=0000700) Train Loss image: 0.008317, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:30:41[0m] (step=0000800) Train Loss image: 0.009628, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:31:49[0m] (step=0000900) Train Loss image: 0.007366, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:32:58[0m] (step=0001000) Train Loss image: 0.008640, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.46, LR: 1.00e-04
+[[34m2025-11-29 23:34:06[0m] (step=0001100) Train Loss image: 0.007499, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:35:14[0m] (step=0001200) Train Loss image: 0.007821, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:36:22[0m] (step=0001300) Train Loss image: 0.007268, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:37:15[0m] Beginning epoch 1...
+[[34m2025-11-29 23:37:32[0m] (step=0001400) Train Loss image: 0.007929, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.44, LR: 1.00e-04
+[[34m2025-11-29 23:38:40[0m] (step=0001500) Train Loss image: 0.007590, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:39:48[0m] (step=0001600) Train Loss image: 0.007520, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:40:56[0m] (step=0001700) Train Loss image: 0.007508, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:42:05[0m] (step=0001800) Train Loss image: 0.006085, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.46, LR: 1.00e-04
+[[34m2025-11-29 23:43:13[0m] (step=0001900) Train Loss image: 0.006808, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:44:22[0m] (step=0002000) Train Loss image: 0.011598, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.46, LR: 1.00e-04
+[[34m2025-11-29 23:45:31[0m] (step=0002100) Train Loss image: 0.007853, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.44, LR: 1.00e-04
+[[34m2025-11-29 23:46:39[0m] (step=0002200) Train Loss image: 0.007466, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:47:47[0m] (step=0002300) Train Loss image: 0.008301, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:48:55[0m] (step=0002400) Train Loss image: 0.007577, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+[[34m2025-11-29 23:50:03[0m] (step=0002500) Train Loss image: 0.006599, Train Loss action:0.000000, Train Loss depth:0.000000, Train Steps/Sec: 1.47, LR: 1.00e-04
+Traceback (most recent call last):
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 779, in <module>
+    main(args)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 472, in main
+    loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+    return super().training_losses(self._wrap_model(model), *args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 801, in training_losses
+    model_output = model(x_t, t, **model_kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 129, in __call__
+    return self.model(x, new_ts, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1636, in forward
+    else self._run_ddp_forward(*inputs, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1454, in _run_ddp_forward
+    return self.module(*inputs, **kwargs)  # type: ignore[index]
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 525, in forward
+    x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c) if self.args.ckpt_wrapper else block(x, c)   # (N, T, D)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 219, in forward
+    x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/timm/layers/mlp.py", line 48, in forward
+    x = self.fc1(x)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/linear.py", line 117, in forward
+    return F.linear(input, self.weight, self.bias)
+KeyboardInterrupt
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 779, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/train_robot.py", line 472, in main
+[rank0]:     loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 97, in training_losses
+[rank0]:     return super().training_losses(self._wrap_model(model), *args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/gaussian_diffusion.py", line 801, in training_losses
+[rank0]:     model_output = model(x_t, t, **model_kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/diffusion/respace.py", line 129, in __call__
+[rank0]:     return self.model(x, new_ts, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1636, in forward
+[rank0]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1454, in _run_ddp_forward
+[rank0]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 525, in forward
+[rank0]:     x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c) if self.args.ckpt_wrapper else block(x, c)   # (N, T, D)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/812code/SYR/baselinepad/models.py", line 219, in forward
+[rank0]:     x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/timm/layers/mlp.py", line 48, in forward
+[rank0]:     x = self.fc1(x)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/home/ct_24210860031/miniconda3/envs/dae-moe/lib/python3.10/site-packages/torch/nn/modules/linear.py", line 117, in forward
+[rank0]:     return F.linear(input, self.weight, self.bias)
+[rank0]: KeyboardInterrupt

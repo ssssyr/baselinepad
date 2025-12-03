@@ -19,11 +19,19 @@ echo "📍 Config:  $CONFIG_FILE"
 echo "🖥️  GPUs:    4,5,6,7 (A100)"
 
 # ---- 2) 数据与结果目录 ----
-FEATURE_PATH="/home/ct_24210860031/812datasets/SYR/metaworld_features"  # 提取后的特征目录（含 dataset_rgb_s_d.json）
+# [修改点]：使用 Python 从 YAML 配置文件中动态提取 feature_path
+FEATURE_PATH=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG_FILE', 'r'))['training']['feature_path'])")
+
+# 检查是否成功提取
+if [ -z "$FEATURE_PATH" ] || [ "$FEATURE_PATH" == "None" ]; then
+    echo "❌ ERROR: Failed to extract 'training.feature_path' from $CONFIG_FILE"
+    exit 1
+fi
+
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$SCRIPT_DIR/results/metaworld_a100_${TIMESTAMP}"
 
-echo "📁 Data Path:    $FEATURE_PATH"
+echo "📁 Data Path (from yaml): $FEATURE_PATH"
 echo "💾 Results Dir:  $RESULTS_DIR"
 mkdir -p "$RESULTS_DIR"
 
@@ -108,6 +116,7 @@ fi
 
 if [ ! -d "$FEATURE_PATH" ]; then
   echo "❌ ERROR: Feature data directory '$FEATURE_PATH' not found!"
+  echo "   (Read from config: training.feature_path)"
   exit 1
 fi
 
@@ -124,7 +133,9 @@ cd "$SCRIPT_DIR" || { echo "❌ ERROR: Cannot change to $SCRIPT_DIR"; exit 1; }
 export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
 echo "🐍 Python path set to: $PYTHONPATH"
 
-# ---- 9) 启动训练（关键：显式传入 --config 与 --feature-path）----
+# ---- 9) 启动训练 ----
+# 注意：虽然这里显式传入了 --feature-path，但它现在的值是从 config 文件里读取的
+# 这样可以保证 shell 脚本的预检逻辑和 python 脚本实际使用的路径一致
 echo "🚀 Launching training..."
 echo "Command:"
 echo "torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT $TRAIN_SCRIPT \\"
