@@ -1,7 +1,7 @@
 import mediapy
 import numpy as np
-import json
 from PIL import Image
+import json
 import matplotlib.pyplot as plt
 import os
 from tqdm import tqdm
@@ -16,11 +16,10 @@ from metaworld.envs import (ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE, ALL_V2_ENVIRONM
 from evaluation.agent import DiffusionAgent
 from evaluation.run_cfg import INSTRUCTIONS, META_CONFIG
 
-
 def set_random_seed(seed=None):
     """Set random seed for reproducibility or randomness"""
     if seed is None:
-        seed = int(time.time() * 1000000) % (2**32)  # Use microsecond timestamp as seed
+        seed = int(time.time() * 1000000) % (2**32)
     
     random.seed(seed)
     np.random.seed(seed)
@@ -31,110 +30,76 @@ def set_random_seed(seed=None):
     print(f"🎲 Set random seed: {seed}")
     return seed 
 
-def add_bound(rgb,color="red"):
-    width=10
-    c = 0 if color=="red" else 1
-    rgb[:width,:,1:3]=100
-    rgb[:width,:,c]=255
+def add_bound(rgb, color="red"):
+    width = 10
+    c = 0 if color == "red" else 1
+    rgb[:width, :, 1:3] = 100
+    rgb[:width, :, c] = 255
     
-    rgb[-width:,:,1:3]=100
-    rgb[-width,:,c]=255
+    rgb[-width:, :, 1:3] = 100
+    rgb[-width, :, c] = 255
     
-    rgb[:,:width,1:3]=100
-    rgb[:,:width,c]=255
-    rgb[:,-width:,1:3]=100
-    rgb[:,-width:,c]=255
+    rgb[:, :width, 1:3] = 100
+    rgb[:, :width, c] = 255
+    rgb[:, -width:, 1:3] = 100
+    rgb[:, -width:, c] = 255
     return rgb
 
-def merge_img(obs, predict,img_word):
-    img_1 = cv2.resize(obs, (256,256), interpolation=cv2.INTER_AREA)
-    image = np.concatenate((add_bound(img_1,color="green"), predict),axis=1)
-    image = np.concatenate((img_word,image),axis=0)
+def merge_img(obs, predict, img_word):
+    img_1 = cv2.resize(obs, (256, 256), interpolation=cv2.INTER_AREA)
+    image = np.concatenate((add_bound(img_1, color="green"), predict), axis=1)
+    image = np.concatenate((img_word, image), axis=0)
     return image
 
 def plot_word():
     from PIL import Image, ImageDraw, ImageFont
-    fnt_titile = ImageFont.truetype("evaluation/TIMES.ttf", int(600/20))
-    img_word = Image.new('RGB', (256*4,40), color = 'white')
+    # 确保字体文件存在，否则可能报错，这里加个简单的容错或者请确保路径正确
+    try:
+        fnt_titile = ImageFont.truetype("evaluation/TIMES.ttf", int(600/20))
+    except:
+        # fallback default font
+        fnt_titile = ImageFont.load_default()
+        
+    img_word = Image.new('RGB', (256*4, 40), color='white')
     draw = ImageDraw.Draw(img_word)
     task = "Observations"
     task2 = "Predictions"
-    draw.text((50,10), task, font=fnt_titile, fill='green')
-    draw.text((572,10), task2, font=fnt_titile, fill='red')
+    draw.text((50, 10), task, font=fnt_titile, fill='green')
+    draw.text((572, 10), task2, font=fnt_titile, fill='red')
 
     return img_word
 
-# motion planner for metaworld tasks
-def motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, image_3, thirdview, predict_img=None, img_word=None):
-    # a simple motion planner to reach the target pose, starting from the current pose
-    # stage (0) Move to the target pose with a constant velocity (0.6 or 0.3)
-    # stage (1) If grasp, then close the gripper
-    stage = 0 
-    grasp_moment = False
-    target_xyz = np.array(target_xyz, dtype=np.float32)
-    curr_xyz = np.array(curr_xyz, dtype=np.float32)
+# [MODIFIED] 重构为单步动作计算函数，不再包含循环和env.step
+def calculate_single_action(target_xyz, target_gripper, curr_xyz, curr_gripper):
+    """
+    根据 Diffusion 预测的 target 计算当前这一步的动作 (velocity + gripper)。
+    实现纯粹的 P-Controller 逻辑。
+    """
+    a = -np.ones(4) # 默认张开夹爪 (-1)
 
-    # check whether the gripper should closed
-    if np.abs(target_gripper - curr_gripper) > 0.2:
-        grasp_moment = True
-        print("prepare grasp!!")
+    # 1. 位置控制 (Position Control)
+    # 使用简单的 P 控制器：动作 = 方向 * 速度
+    dist = np.linalg.norm(target_xyz - curr_xyz)
     
-    # start motion planner with max 50 steps
-    motion_steps = 50
-    success_flag = False
-    for i in range(motion_steps):                
-        a = -np.ones(4)
-        if stage == 0: # moving to target pose with a constant velocity
-            dist = np.linalg.norm(target_xyz-curr_xyz)
-            xy_dist = np.linalg.norm(target_xyz[:2]-curr_xyz[:2])
-            if target_gripper < curr_gripper - 0.05 and xy_dist < 0.015:
-                a[3] = 0.7
-            velocity = 0.6 if dist > 0.03 else 0.3
-            a[:3] = (target_xyz-curr_xyz)/np.linalg.norm(target_xyz-curr_xyz)*velocity
+    # 保持原有的启发式速度逻辑：离得远就快点，近了就慢点
+    velocity = 0.6 if dist > 0.03 else 0.3
+    
+    # 防止除以零
+    if dist < 1e-6:
+        a[:3] = 0
+    else:
+        a[:3] = (target_xyz - curr_xyz) / dist * velocity
 
-            # step the env
-            obs, r, done, info = env.step(a)
-            img = env.render(offscreen=True, camera_name=thirdview, resolution=[224,224],depth=False)
-            if predict_img is not None:
-                img_all= merge_img(img,predict_img,img_word)
-            image_3.append(img_all)
-            curr_xyz,curr_gripper = env._get_obs()[:3], env._get_obs()[3]
-
-            # early break if env already reports success
-            if info.get("success", 0):
-                success_flag = True
-                break
-
-            # check if the target pose is reached
-            xy_dist = np.linalg.norm(target_xyz[:2]-curr_xyz[:2])
-            z_close = abs(target_xyz[2]-curr_xyz[2]) < 0.01
-            if stage==0 and xy_dist < 0.005 and (not grasp_moment or z_close):
-                stage += 1 if grasp_moment else motion_steps
-
-        elif stage < 20: # grasping stage
-            if target_gripper < 0.82:
-                a = np.array([0,0,0,0.7]) # close the gripper
-                obs, r, done, info = env.step(a)
-                img = env.render(offscreen=True, camera_name=thirdview, resolution=[224,224],depth=False)
-                if predict_img is not None:
-                    img_all= merge_img(img,predict_img,img_word)
-                image_3.append(img_all)
-                if info.get("success", 0):
-                    success_flag = True
-                    break
-                stage += 1
-            else:
-                break
-        else:
-            break
-    # If success happened mid-loop, ensure the returned info reflects it
-    if success_flag:
-        info["success"] = 1.0
-    return info,img
+    # 2. 夹爪控制 (Gripper Control)
+    # 如果 Diffusion 预测的夹爪值小于阈值（通常是 0.75 或 0.5），则执行闭合
+    # 注意：MetaWorld 中正值通常是闭合，具体取决于环境配置，这里沿用原代码的 0.7
+    if target_gripper < 0.75: 
+        a[3] = 0.7 
+        
+    return a
 
 
 # rollout tasks
-task_list = [key for key in INSTRUCTIONS.keys()]
 task_list = META_CONFIG['task_list']
 success_num = np.zeros(len(task_list))
 thirdview = META_CONFIG['thirdview_camera']
@@ -143,152 +108,110 @@ ckpt_path = META_CONFIG['ckpt_path']
 use_depth = META_CONFIG['use_depth']
 
 # build agent
-agent = DiffusionAgent(ckpt_path=ckpt_path,vae_path=META_CONFIG['vae_path'], clip_path=META_CONFIG['clip_path'], denoise_steps=META_CONFIG['denoise_steps'])
+agent = DiffusionAgent(
+    ckpt_path=ckpt_path,
+    vae_path=META_CONFIG['vae_path'],
+    clip_path=META_CONFIG['clip_path'],
+    denoise_steps=META_CONFIG['denoise_steps'],
+    device_id=META_CONFIG.get('gpu_id', 0)
+)
+
 if META_CONFIG['visualize_prediction']:
     img_word = plot_word()
 else:
     img_word = None
     predict_img = None
 
+# [MODIFIED] 增加最大步数，因为现在是单步执行，不再是 chunking 执行
+# 原来的 30 步是指 "30次规划"，每次规划可能会跑 50 步物理仿真。
+# 现在改为 RHC，总步数需要增加以覆盖同样的物理时间。
+MAX_RHC_STEPS = 500 
+
 # start rollout
 for selected_id, task in enumerate(task_list):
+    # 实例化环境
     env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[task+"-goal-observable"]
     env = env_cls(seed=selected_id+100)
 
     for traj_idx in range(META_CONFIG['rollout_num']):
-        # Set different random seed for each trajectory to ensure diverse sampling
         current_seed = set_random_seed()
-        print("task name", task, 'traj_idx', traj_idx)
+        print(f"task name: {task}, traj_idx: {traj_idx}")
         image_3 = []
 
         obs = env.reset()
-        img = env.render(offscreen=True, camera_name=thirdview, resolution=[224,224],depth=False)
-        # image_3.append(img)
-        hold_grip_value = META_CONFIG.get('hold_grip_value', 0.35)
-        object_grasped = False
-        close_trigger_delta = META_CONFIG.get('close_trigger_delta', 0.12)
-        hold_hysteresis = META_CONFIG.get('hold_hysteresis', 0.02)
-
-        grasp_task_list = META_CONFIG.get('grasp_tasks', ['assembly-v2','basketball-v2','pick-place-v2'])
-        requires_grasp = task in grasp_task_list
-
-        for plan_step in tqdm(range(META_CONFIG['max_steps'])):
-            # prepare input data
-            state = env._get_obs()[:4]
+        # 初始化渲染
+        img = env.render(offscreen=True, camera_name=thirdview, resolution=[224, 224], depth=False)
+        
+        success_flag = False
+        
+        # [MODIFIED] 主控制循环：Receding Horizon Control
+        # 每次循环：观测 -> 预测 -> 执行一步
+        for step_idx in tqdm(range(MAX_RHC_STEPS), desc="RHC Steps"):
+            # 1. 准备输入数据
+            state = obs[:4] # (x, y, z, gripper)
+            curr_xyz, curr_gripper = state[:3], state[3]
+            
             rgb = img
-            depth =  depth if use_depth else None
+            depth = depth if use_depth else None
             text = INSTRUCTIONS[task]
 
-            # plan next target with PAD agent
-            samples,sample_a,sample_depth = agent.action(text, rgb, depth, state)
+            # 2. PAD Agent 预测 (Inference)
+            # 注意：这里每次都重新预测，利用了最新的观测信息
+            samples, sample_a, sample_depth = agent.action(text, rgb, depth, state)
 
+            # 可视化预测结果
             if META_CONFIG['visualize_prediction']:
-                predict_img = agent.decode_rgb(rgb, samples) # np.array shape (256,256*3)
+                predict_img = agent.decode_rgb(rgb, samples) 
                 predict_img = add_bound(predict_img)
+                # 合并当前观测和预测图像
+                img_all = merge_img(img, predict_img, img_word)
+                image_3.append(img_all)
+            else:
+                image_3.append(img) # 仅保存观测
 
-            # Build the target trajectory from all predicted steps
-            target_frames = []
+            # 3. 解析预测动作作为当前目标 (Target)
+            # 我们只取预测序列的第一个点 (T+k) 作为局部目标
             if agent.args.action_steps > 0 and sample_a is not None:
-                a_seq = sample_a.reshape(agent.args.action_steps, agent.args.action_dim)  # (S,4)
-                for frame_idx in range(a_seq.shape[0]):
-                    target_frames.append(a_seq[frame_idx] / agent.args.action_scale)
+                a_seq = sample_a.reshape(agent.args.action_steps, agent.args.action_dim)
+                target = a_seq[0] / agent.args.action_scale # 取第一帧
+                target_xyz, target_gripper = target[:3], target[3]
             else:
-                target = sample_a/agent.args.action_scale
-                if target.ndim >= 2 and target.shape[1] >= 3:
-                    for frame_idx in range(target.shape[1]):
-                        target_frames.append(target[0, frame_idx, :])
-                else:
-                    target_frames.append(target[0,0,:])
+                # 兼容旧逻辑
+                target = sample_a / agent.args.action_scale
+                target_xyz, target_gripper = target[0, 0, :3], target[0, 0, 3]
 
-            last_info = None
-            delta_limit = META_CONFIG.get('delta_limit', 0.02)
-            grasp_acquired = False
-            grasp_acquired = False
-            for target_idx, target in enumerate(target_frames):
-                curr_xyz, curr_gripper = state[:3], state[3]
-                target_xyz = np.array(target[:3], dtype=np.float32)
-                target_gripper = target[3]
-                if requires_grasp and not object_grasped:
-                    closing_intent = target_gripper < curr_gripper - close_trigger_delta
-                    already_closed = curr_gripper < hold_grip_value + hold_hysteresis
-                    if closing_intent or already_closed:
-                        object_grasped = True
+            # 4. 计算控制指令 (Low-level Control)
+            # 根据当前位置和预测的目标位置，计算这一步的 action
+            action = calculate_single_action(target_xyz, target_gripper, curr_xyz, curr_gripper)
 
-                if requires_grasp and object_grasped and target_gripper > hold_grip_value:
-                    target_gripper = hold_grip_value
+            # 5. 执行一步物理仿真 (Execute)
+            obs, r, done, info = env.step(action)
+            img = env.render(offscreen=True, camera_name=thirdview, resolution=[224, 224], depth=False)
 
-                print(f"🎯 Selected step={target_idx} action: {target}, current state: {state[:4]}")
-                print(f"Δpose (xyz): {target[:3] - state[:3]}, Δgripper: {target[3] - state[3]}")
-
-                delta = target_xyz - curr_xyz
-                delta = np.clip(delta, -delta_limit, delta_limit)
-                target_xyz = curr_xyz + delta
-
-                info, img = motion_planner(
-                    target_xyz, target_gripper, curr_xyz, curr_gripper,
-                    env, image_3, thirdview, predict_img=predict_img, img_word=img_word
-                )
-                last_info = info
-
-                obs = env._get_obs()
-                state = obs[:4]
-                post_gripper = state[3]
-                rgb = env.render(offscreen=True, camera_name=thirdview, resolution=[224,224],depth=False)
-
-                grasp_reward = info.get("grasp_reward", 0)
-                grasp_acquired = False
-                if requires_grasp:
-                    grasp_acquired = info.get("grasp_success", 0) > 0.2 or grasp_reward > 0.2 or post_gripper < hold_grip_value + hold_hysteresis
-                if requires_grasp and grasp_acquired:
-                    object_grasped = True
-                if info.get("success", 0):
-                    break
-
-            metrics_source = last_info if last_info is not None else {}
-            obj_to_target = metrics_source.get('obj_to_target', 0.0)
-            near_object = metrics_source.get('near_object', 0.0)
-            grasp_success = metrics_source.get('grasp_success', 0.0)
-            grasp_reward = metrics_source.get('grasp_reward', 0.0)
-            in_place_reward = metrics_source.get('in_place_reward', 0.0)
-
-            if obj_to_target > 0:
-                progress_pct = max(0, min(100, (1.0 - obj_to_target/0.15) * 100))
-                print(f"Step {plan_step+1}: success={metrics_source.get('success',0):.1f}, obj_to_target={obj_to_target:.4f}m ({progress_pct:.1f}%)")
-            else:
-                print(f"Step {plan_step+1}: success={metrics_source.get('success',0):.1f}, obj_to_target=N/A")
-
-            print(f"  └─ near_object={near_object:.3f}, grasp_success={grasp_success:.3f}, grasp_reward={grasp_reward:.3f}, in_place_reward={in_place_reward:.3f}")
-
-            if plan_step == META_CONFIG['max_steps'] - 1:
-                if metrics_source.get('success', 0):
-                    print(f"🎉 {task} traj_idx {traj_idx} FULL SUCCESS!")
-                    if obj_to_target > 0:
-                        print(f"   Final obj_to_target: {obj_to_target:.4f}m")
-                elif obj_to_target > 0:
-                    if task.startswith('button-press'):
-                        threshold = 0.06
-                    elif task.startswith('basketball'):
-                        threshold = 0.08
-                    else:
-                        threshold = 0.05
-
-                    if obj_to_target <= threshold:
-                        print(f"👍 {task} traj_idx {traj_idx} GOOD PROGRESS (obj_to_target: {obj_to_target:.4f}m)")
-                    else:
-                        print(f"⚠️ {task} traj_idx {traj_idx} Need more progress (obj_to_target: {obj_to_target:.4f}m)")
-                        print(f"   Target: <=0.04m, Current progress: {threshold - obj_to_target:.4f}m away")
-                else:
-                    print(f"📊 {task} traj_idx {traj_idx} COMPLETED (success={metrics_source.get('success',0):.1f})")
-
-            if metrics_source.get('success', 0):
-                print(task, traj_idx, 'success')
+            # 6. 状态监控与成功判定
+            obj_to_target = info.get('obj_to_target', 0.0)
+            
+            # 如果环境判定成功，提前退出
+            if info.get("success", 0):
+                success_flag = True
+                print(f"🎉 {task} traj_idx {traj_idx} SUCCESS at step {step_idx}!")
                 success_num[selected_id] += 1
                 break
-        
+            
+            # (可选) 打印调试信息，每20步打印一次以免刷屏
+            if step_idx % 20 == 0:
+                print(f"Step {step_idx}: dist={obj_to_target:.4f}, grip_cmd={action[3]:.2f}, pred_grip={target_gripper:.2f}")
+
+        if not success_flag:
+            print(f"❌ {task} traj_idx {traj_idx} FAILED after {MAX_RHC_STEPS} steps.")
+
+        # 保存视频
         video_dir = META_CONFIG['video_dir']
         os.makedirs(f'{video_dir}/rollout_metaworld', exist_ok=True)
-        mediapy.write_video(f'{video_dir}/rollout_metaworld/{task}_{traj_idx}.mp4', image_3, fps=20)
-    
+        save_path = f'{video_dir}/rollout_metaworld/{task}_{traj_idx}.mp4'
+        mediapy.write_video(save_path, image_3, fps=20)
+        print(f"Video saved to {save_path}")
 
+# 打印最终统计
 for i in range(len(task_list)):
-    print(task_list[i], success_num[i])
+    print(f"Task: {task_list[i]}, Success Rate: {success_num[i]}/{META_CONFIG['rollout_num']}")
