@@ -19,7 +19,7 @@ training:
 
   # Training Loop
   epochs: 500            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
-  global_batch_size: 64
+  global_batch_size: 56
   global_seed: 42
   num_workers: 8
   without_ema: false
