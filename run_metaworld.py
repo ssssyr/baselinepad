@@ -174,6 +174,7 @@ for selected_id, task in enumerate(task_list):
             text = INSTRUCTIONS[task]
             # state = env._get_obs()[:4]
             state = env._get_obs()[:4]
+            curr_xyz, curr_gripper = state[:3], state[3] # current pose
 
             # plan next target with PAD agent
             samples,sample_a,sample_depth = agent.action(text, rgb, depth, state)
@@ -185,12 +186,14 @@ for selected_id, task in enumerate(task_list):
             # Use the first predicted step as the immediate target pose
             if agent.args.action_steps > 0 and sample_a is not None:
                 a_seq = sample_a.reshape(agent.args.action_steps, agent.args.action_dim)  # (S,4)
+                print(f"🧭 Full predicted action seq (xyzg per step):\n{np.array2string(a_seq, precision=3, floatmode='fixed')}")
+                print(f"🧭 Gripper seq: {np.array2string(a_seq[:,3], precision=3, floatmode='fixed')}, current gripper: {curr_gripper:.3f}")
                 target = a_seq[0] / agent.args.action_scale
                 target_xyz, target_gripper = target[:3], target[3]
             else:
                 target = sample_a/agent.args.action_scale
                 target_xyz, target_gripper = target[0,0,:3], target[0,0,3] # target pose
-            curr_xyz, curr_gripper = state[:3], state[3] # current pose
+            print(f"🧭 Target used (step0 xyzg): {np.array2string(target_xyz, precision=3, floatmode='fixed')}, target_gripper: {target_gripper:.3f}")
             
             # motion planner to reach the target pose, starting from the current pose
             info, img = motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, image_3, thirdview, predict_img=predict_img, img_word=img_word)

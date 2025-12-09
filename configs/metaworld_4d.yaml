@@ -40,7 +40,7 @@ training:
   log_every: 100
   eval_every: 50000   # 更频繁评估以匹配更短训练
   ckpt_every: 20000
-  ckpt_wrapper: true
+  ckpt_wrapper: false
 
   # Resuming Training
   resume: null
@@ -92,12 +92,14 @@ components:
 # ======================================================
 moe:
   use_moe: true             # Enable Mixture of Experts
-  num_experts: 4
+  num_experts: 8
   moe_top_k: 2
   aux_loss_weight: 0.01
   router_z_loss_weight: 0.001
   moe_start_layer: 14       # use MoE from layer index 14 (i.e., back 14 layers)
   moe_shared_experts: 1     # number of shared fallback experts per block
+  use_modality_bias: true   # enable modality-aware routing
+  modality_bias_strength_action: 1  # bias action tokens toward expert 0
 
 # ======================================================
 #                  WandB Logging
@@ -115,4 +117,4 @@ metaworld:
   data_path: ""  # Path to original MetaWorld data (if available)
   image_size: 256  # Image resolution for MetaWorld
   use_depth: false  # Disable depth for MetaWorld
-  camera_name: "corner2"  # Camera view for MetaWorld
+  camera_name: "corner3"  # Camera view for MetaWorld

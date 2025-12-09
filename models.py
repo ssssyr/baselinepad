@@ -188,6 +188,9 @@ class DiTBlock(nn.Module):
         moe_top_k=2,
         moe_aux_loss=0.01,
         shared_experts=2,
+        use_modality_bias=False,
+        modality_bias_init=None,
+        num_modalities=3,
         **block_kwargs,
     ):
         super().__init__()
@@ -203,6 +206,9 @@ class DiTBlock(nn.Module):
                 num_experts_per_tok=moe_top_k,
                 aux_loss_alpha=moe_aux_loss,
                 n_shared_experts=shared_experts,
+                use_modality_bias=use_modality_bias,
+                modality_bias_init=modality_bias_init,
+                num_modalities=num_modalities,
             )
         else:
             mlp_hidden_dim = int(hidden_size * mlp_ratio)
@@ -214,11 +220,14 @@ class DiTBlock(nn.Module):
         )
         self.last_aux_loss = None
 
-    def forward(self, x, c):
+    def forward(self, x, c, modality_ids=None):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
         x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
         mlp_input = modulate(self.norm2(x), shift_mlp, scale_mlp)
-        x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input)
+        if self.use_moe:
+            x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input, modality_ids=modality_ids)
+        else:
+            x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input)
         if self.use_moe:
             self.last_aux_loss = getattr(self.mlp, "last_aux_loss", None)
         else:
@@ -330,6 +339,18 @@ class DiT(nn.Module):
         self.moe_shared_experts = int(getattr(args, "moe_shared_experts", 2))
         moe_start_layer = getattr(args, "moe_start_layer", None)
         self.moe_start_layer = None if moe_start_layer in (None, "") else int(moe_start_layer)
+        self.use_modality_bias = bool(getattr(args, "use_modality_bias", False))
+        self.modality_bias_strength_action = float(getattr(args, "modality_bias_strength_action", 0.0))
+        self.modality_bias_strength_depth = float(getattr(args, "modality_bias_strength_depth", 0.0))
+        self.moe_num_modalities = 3
+        self.moe_modality_bias_init = None
+        if self.use_modality_bias:
+            bias = torch.zeros(self.moe_num_modalities, self.moe_num_experts)
+            if self.modality_bias_strength_action != 0.0:
+                bias[1, 0] = self.modality_bias_strength_action
+            if self.modality_bias_strength_depth != 0.0:
+                bias[2, 1] = self.modality_bias_strength_depth
+            self.moe_modality_bias_init = bias
         x_embedder_channels = in_channels if not args.dynamics else in_channels+in_channels*args.predict_horizon
 
         self.x_embedder = PatchEmbed(input_size, patch_size, x_embedder_channels, hidden_size, bias=True)
@@ -385,13 +406,16 @@ class DiT(nn.Module):
                     num_heads,
                     mlp_ratio=mlp_ratio,
                     attn_mask=attn_mask,
-                    use_moe=block_uses_moe,
-                    moe_num_experts=self.moe_num_experts,
-                    moe_top_k=self.moe_top_k,
-                    moe_aux_loss=self.moe_aux_loss,
-                    shared_experts=self.moe_shared_experts,
-                )
+                use_moe=block_uses_moe,
+                moe_num_experts=self.moe_num_experts,
+                moe_top_k=self.moe_top_k,
+                moe_aux_loss=self.moe_aux_loss,
+                shared_experts=self.moe_shared_experts,
+                use_modality_bias=self.use_modality_bias and block_uses_moe,
+                modality_bias_init=self.moe_modality_bias_init,
+                num_modalities=self.moe_num_modalities,
             )
+        )
         self.blocks = nn.ModuleList(blocks)
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels, self.args)
         self.initialize_weights()
@@ -497,8 +521,8 @@ class DiT(nn.Module):
     #     return imgs
     
     def ckpt_wrapper(self, module):
-        def ckpt_forward(*inputs):
-            outputs = module(*inputs)
+        def ckpt_forward(x, c, modality_ids):
+            outputs = module(x, c, modality_ids)
             return outputs
         return ckpt_forward
 
@@ -527,15 +551,20 @@ class DiT(nn.Module):
             d = self.d_embedder(noised_depth) + self.d_pos_embed
             x = torch.cat([x,d],dim=1)
             # print("x_shape",x.shape)
+        modality_ids = torch.zeros((x.shape[0], x.shape[1]), device=x.device, dtype=torch.long)
+        if self.args.action_steps>0:
+            modality_ids[:, self.args.start_idx[1]:self.args.end_idx[1]] = 1
+        if self.args.use_depth:
+            modality_ids[:, self.args.start_idx[2]:self.args.end_idx[2]] = 2
 
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
         for block in self.blocks:
             if self.args.ckpt_wrapper:
-                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c, use_reentrant=False)
+                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c, modality_ids, use_reentrant=False)
             else:
-                x = block(x, c)   # (N, T, D)
+                x = block(x, c, modality_ids)   # (N, T, D)
         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
         # print("x_shape", x.shape)
         if self.args.action_steps>0 or self.args.use_depth:
@@ -583,6 +612,26 @@ class DiT(nn.Module):
         if not aux_values:
             return None
         return torch.stack(aux_values).sum()
+
+    def get_last_routing_stats(self):
+        """
+        Aggregate lightweight routing stats (e.g., action hit rate/coverage) across MoE blocks.
+        Returns a dict of averaged metrics or None if MoE is disabled or stats are unavailable.
+        """
+        if not self.use_moe:
+            return None
+        sums = {}
+        counts = {}
+        for block in self.blocks:
+            stats = getattr(block, "last_routing_stats", None)
+            if not stats:
+                continue
+            for key, val in stats.items():
+                sums[key] = sums.get(key, 0.0) + float(val)
+                counts[key] = counts.get(key, 0) + 1
+        if not sums:
+            return None
+        return {k: sums[k] / counts[k] for k in sums}
 
 
 #################################################################################

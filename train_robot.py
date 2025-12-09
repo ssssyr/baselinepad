@@ -327,7 +327,10 @@ def main(args):
     weight_decay = float(getattr(args, 'weight_decay', 0.0))
     beta1 = float(getattr(args, 'adam_beta1', 0.9))
     beta2 = float(getattr(args, 'adam_beta2', 0.999))
-    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(beta1, beta2))
+    adamw_kwargs = dict(lr=lr, weight_decay=weight_decay, betas=(beta1, beta2))
+    if hasattr(torch.optim.AdamW, "fused"):
+        adamw_kwargs["fused"] = True
+    opt = torch.optim.AdamW(model.parameters(), **adamw_kwargs)
 
     # Data
     dataset = RobotDataset(args.feature_path, args)
@@ -337,7 +340,9 @@ def main(args):
         shuffle=True,
         num_workers=args.num_workers,
         pin_memory=True,
-        drop_last=True
+        drop_last=True,
+        persistent_workers=(args.num_workers > 0),
+        prefetch_factor=4 if args.num_workers > 0 else 2,
     )
 
     if accelerator.is_main_process:
@@ -410,6 +415,8 @@ def main(args):
     running_loss_a = 0.0
     running_loss_d = 0.0
     running_moe_aux = 0.0
+    routing_sums = {}
+    routing_counts = {}
     start_time = time()
     eval_batch = None
     best_action_loss = 1e8
@@ -483,6 +490,11 @@ def main(args):
                 aux_tensor = accelerator.unwrap_model(model).get_last_aux_loss()
                 if aux_tensor is not None:
                     moe_aux_metric = aux_tensor.item()
+                routing_stats = accelerator.unwrap_model(model).get_last_routing_stats()
+                if routing_stats is not None:
+                    for k, v in routing_stats.items():
+                        routing_sums[k] = routing_sums.get(k, 0.0) + float(v)
+                        routing_counts[k] = routing_counts.get(k, 0) + 1
 
             opt.zero_grad()
             accelerator.backward(loss)
@@ -515,6 +527,11 @@ def main(args):
                 avg_loss_a = (running_loss_a / log_steps) if log_steps > 0 else 0.0
                 avg_loss_d = (running_loss_d / log_steps) if log_steps > 0 else 0.0
                 avg_moe_aux = (running_moe_aux / log_steps) if (log_steps > 0 and getattr(args, "use_moe", False)) else 0.0
+                routing_avg = {}
+                for k in routing_sums:
+                    cnt = routing_counts.get(k, 0)
+                    if cnt > 0:
+                        routing_avg[k] = routing_sums[k] / cnt
 
                 if accelerator.is_main_process:
                     # Get current learning rate
@@ -523,6 +540,13 @@ def main(args):
                                f"Train Loss action:{avg_loss_a:.6f}, Train Loss depth:{avg_loss_d:.6f}, ")
                     if getattr(args, "use_moe", False):
                         log_msg += f"MoE aux loss:{avg_moe_aux:.6f}, "
+                        if routing_avg:
+                            if "action_hit_rate" in routing_avg:
+                                log_msg += f"ActionHit:{routing_avg['action_hit_rate']:.3f}, "
+                            if "action_coverage" in routing_avg:
+                                log_msg += f"ActionCov:{routing_avg['action_coverage']:.3f}, "
+                            if "rgb_coverage" in routing_avg:
+                                log_msg += f"RGBCov:{routing_avg['rgb_coverage']:.3f}, "
                     log_msg += f"Train Steps/Sec: {steps_per_sec:.2f}, LR: {current_lr:.2e}"
                     logger.info(log_msg)
                     if args.use_wandb:
@@ -538,12 +562,16 @@ def main(args):
                             log_payload["train/loss_depth"] = avg_loss_d
                         if getattr(args, "use_moe", False):
                             log_payload["train/moe_aux_loss"] = avg_moe_aux
+                            for k, v in routing_avg.items():
+                                log_payload[f"moe/{k}"] = v
                         wandb.log(log_payload, step=train_steps)
 
                 running_loss = 0.0
                 running_loss_a = 0.0
                 running_loss_d = 0.0
                 running_moe_aux = 0.0
+                routing_sums = {}
+                routing_counts = {}
                 log_steps = 0
                 start_time = time()
 

@@ -17,6 +17,9 @@ class MoEGate(nn.Module):
         num_experts: int = 16,
         num_experts_per_tok: int = 2,
         aux_loss_alpha: float = 0.01,
+        use_modality_bias: bool = False,
+        num_modalities: int = 3,
+        modality_bias_init: Optional[torch.Tensor] = None,
     ):
         super().__init__()
         self.top_k = num_experts_per_tok
@@ -27,17 +30,33 @@ class MoEGate(nn.Module):
         self.norm_topk_prob = False
         self.gating_dim = embed_dim
         self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.gating_dim)))
+        self.use_modality_bias = use_modality_bias
+        self.num_modalities = num_modalities
+        if self.use_modality_bias:
+            bias = torch.zeros(self.num_modalities, self.n_routed_experts)
+            if modality_bias_init is not None:
+                modality_bias_init = modality_bias_init.detach().float()
+                if modality_bias_init.shape == bias.shape:
+                    bias.copy_(modality_bias_init)
+            self.modality_bias = nn.Parameter(bias)
+        else:
+            self.modality_bias = None
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
         init = torch.nn.init
         init.kaiming_uniform_(self.weight, a=math.sqrt(5))
 
-    def forward(self, hidden_states: torch.Tensor):
+    def forward(self, hidden_states: torch.Tensor, modality_ids: Optional[torch.Tensor] = None):
         """Compute gate indices, weights, and auxiliary balancing loss."""
         bsz, seq_len, hidden_dim = hidden_states.shape
         flat_states = hidden_states.reshape(-1, hidden_dim)
         logits = F.linear(flat_states, self.weight, None)
+        if self.use_modality_bias and modality_ids is not None and self.modality_bias is not None:
+            flat_modality = modality_ids.reshape(-1)
+            if flat_modality.numel() == flat_states.shape[0]:
+                bias = self.modality_bias.to(hidden_states.device)
+                logits = logits + bias[flat_modality]
         if self.scoring_func == "softmax":
             scores = logits.softmax(dim=-1)
         else:
@@ -139,6 +158,9 @@ class SparseMoeBlock(nn.Module):
         pretraining_tp: int = 1,
         aux_loss_alpha: float = 0.01,
         n_shared_experts: int = 2,
+        use_modality_bias: bool = False,
+        num_modalities: int = 3,
+        modality_bias_init: Optional[torch.Tensor] = None,
     ):
         super().__init__()
         self.num_experts_per_tok = num_experts_per_tok
@@ -158,6 +180,9 @@ class SparseMoeBlock(nn.Module):
             num_experts=num_experts,
             num_experts_per_tok=num_experts_per_tok,
             aux_loss_alpha=aux_loss_alpha,
+            use_modality_bias=use_modality_bias,
+            num_modalities=num_modalities,
+            modality_bias_init=modality_bias_init,
         )
         self.n_shared_experts = n_shared_experts
         if self.n_shared_experts:
@@ -170,11 +195,12 @@ class SparseMoeBlock(nn.Module):
         else:
             self.shared_experts = None
         self.last_aux_loss: Optional[torch.Tensor] = None
+        self.last_routing_stats: Optional[dict] = None
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, modality_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         identity = hidden_states
         orig_shape = hidden_states.shape
-        topk_idx, topk_weight, aux_loss = self.gate(hidden_states)
+        topk_idx, topk_weight, aux_loss = self.gate(hidden_states, modality_ids=modality_ids)
 
         flat_states = hidden_states.reshape(-1, hidden_states.shape[-1])
         flat_topk_idx = topk_idx.view(-1)
@@ -198,6 +224,48 @@ class SparseMoeBlock(nn.Module):
 
         if self.shared_experts is not None:
             output = output + self.shared_experts(identity)
+
+        # lightweight routing stats for logging (detached, no grad)
+        self.last_routing_stats = None
+        if modality_ids is not None:
+            with torch.no_grad():
+                stats = {}
+                flat_mod = modality_ids.reshape(-1)
+                flat_topk = topk_idx.view(-1, self.num_experts_per_tok)
+                flat_weight = topk_weight.view(-1, self.num_experts_per_tok)
+                num_experts = len(self.experts)
+
+                # Action modality (id=1): hit rate on expert0, coverage, avg weight on expert0
+                action_mask = flat_mod == 1
+                if action_mask.any():
+                    a_topk = flat_topk[action_mask]
+                    hit = (a_topk == 0).any(dim=1).float().mean()
+                    counts = torch.bincount(a_topk.view(-1), minlength=num_experts)
+                    coverage = (counts > 0).float().mean()
+                    stats["action_hit_rate"] = hit
+                    stats["action_coverage"] = coverage
+                    a_weight = flat_weight[action_mask]
+                    hit_weight = a_weight[a_topk == 0]
+                    if hit_weight.numel() > 0:
+                        stats["action_expert0_weight"] = hit_weight.mean()
+
+                # RGB modality (id=0): coverage
+                rgb_mask = flat_mod == 0
+                if rgb_mask.any():
+                    rgb_topk = flat_topk[rgb_mask]
+                    counts = torch.bincount(rgb_topk.view(-1), minlength=num_experts)
+                    stats["rgb_coverage"] = (counts > 0).float().mean()
+
+                # Depth modality (id=2): coverage
+                depth_mask = flat_mod == 2
+                if depth_mask.any():
+                    depth_topk = flat_topk[depth_mask]
+                    counts = torch.bincount(depth_topk.view(-1), minlength=num_experts)
+                    stats["depth_coverage"] = (counts > 0).float().mean()
+
+                if stats:
+                    # ensure plain tensors detached
+                    self.last_routing_stats = {k: v.detach() for k, v in stats.items()}
         return output
 
     @torch.no_grad()
@@ -224,4 +292,3 @@ class SparseMoeBlock(nn.Module):
                 reduce="sum",
             )
         return expert_cache
-
