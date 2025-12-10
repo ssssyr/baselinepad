@@ -213,12 +213,20 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
         fc2_w = state_dict.get(f"{prefix}.fc2.weight", None)
         if fc1_w is None or fc2_w is None:
             continue
-        # copy weights; shapes should match hidden->intermediate and intermediate->hidden
-        state_dict[f"{prefix}.shared_experts.gate_proj.weight"] = fc1_w.clone()
-        state_dict[f"{prefix}.shared_experts.up_proj.weight"] = fc1_w.clone()
-        state_dict[f"{prefix}.shared_experts.down_proj.weight"] = fc2_w.clone()
-        if verbose:
-            print(f"✓ Copied dense FFN -> shared_experts for block {idx}")
+        gp_shape = mlp.shared_experts.gate_proj.weight.shape
+        dp_shape = mlp.shared_experts.down_proj.weight.shape
+        # Only copy when shapes match; otherwise keep shared_experts random.
+        if fc1_w.shape == gp_shape and fc2_w.shape == dp_shape:
+            state_dict[f"{prefix}.shared_experts.gate_proj.weight"] = fc1_w.clone()
+            state_dict[f"{prefix}.shared_experts.up_proj.weight"] = fc1_w.clone()
+            state_dict[f"{prefix}.shared_experts.down_proj.weight"] = fc2_w.clone()
+            if verbose:
+                print(f"✓ Copied dense FFN -> shared_experts for block {idx}")
+        else:
+            if verbose:
+                print(f"↻ Skip copying to shared_experts for block {idx} (shape mismatch: "
+                      f"fc1 {tuple(fc1_w.shape)} vs {tuple(gp_shape)}, "
+                      f"fc2 {tuple(fc2_w.shape)} vs {tuple(dp_shape)})")
 
 
 #################################################################################
