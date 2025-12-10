@@ -230,8 +230,11 @@ class DiTBlock(nn.Module):
             x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input)
         if self.use_moe:
             self.last_aux_loss = getattr(self.mlp, "last_aux_loss", None)
+            # propagate lightweight routing stats (coverage/hit rate) up to the block for logging
+            self.last_routing_stats = getattr(self.mlp, "last_routing_stats", None)
         else:
             self.last_aux_loss = None
+            self.last_routing_stats = None
         return x
 
 

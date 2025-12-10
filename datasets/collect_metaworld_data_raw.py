@@ -138,7 +138,7 @@ NUM_TRAJECTORIES_PER_TASK = 50          # 每任务采集轨迹数
 KEEP_ONLY_SUCCESS = False               # 仅保留成功轨迹（会重采直到够数）
 CAMERA_NAME = "corner3"                 # ['corner','corner2','corner3','corner4','topview','behindGripper','gripperPOV']
 IMAGE_RESOLUTION = (256, 256)           # (H, W)
-OUTPUT_DIR = Path("/mnt/sda/datasets/metaworldcorner3")  # 输出根目录
+OUTPUT_DIR = Path("/mnt/sda/datasets/metaworld_corner3_assembly")  # 输出根目录
 
 # 任务名 -> 专家策略（如需扩展，取消注释对应行）
 POLICY_MAPPING = {

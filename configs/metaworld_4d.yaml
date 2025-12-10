@@ -19,7 +19,7 @@ training:
 
   # Training Loop
   epochs: 1500            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
-  global_batch_size: 56
+  global_batch_size: 48
   global_seed: 42
   num_workers: 8
   without_ema: false
@@ -39,8 +39,9 @@ training:
   # Logging and Checkpointing
   log_every: 100
   eval_every: 50000   # 更频繁评估以匹配更短训练
-  ckpt_every: 20000
+  ckpt_every: 10000
   ckpt_wrapper: false
+  save_model_only: false  # 若为 true，则 checkpoint 仅保存模型权重
 
   # Resuming Training
   resume: null
@@ -56,10 +57,10 @@ components:
 
   # Initialization
   dit_init: null
-  rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt"
+  rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre_mw_ft.pt"
 
   # Attention
-  attn_mask: true
+  attn_mask: false
 
   # Dynamics - Enable for MetaWorld
   dynamics: true
@@ -92,12 +93,12 @@ components:
 # ======================================================
 moe:
   use_moe: true             # Enable Mixture of Experts
-  num_experts: 8
+  num_experts: 4
   moe_top_k: 2
   aux_loss_weight: 0.01
   router_z_loss_weight: 0.001
   moe_start_layer: 14       # use MoE from layer index 14 (i.e., back 14 layers)
-  moe_shared_experts: 1     # number of shared fallback experts per block
+  moe_shared_experts: 1     # remove shared experts to节省显存/算力
   use_modality_bias: true   # enable modality-aware routing
   modality_bias_strength_action: 1  # bias action tokens toward expert 0
 

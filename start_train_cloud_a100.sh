@@ -7,8 +7,8 @@
 
 set -e
 
-# ---- 0) 项目根目录（按你的实际路径） ----
-SCRIPT_DIR="/home/ct_24210860031/812code/SYR/baselinepad"
+# ---- 0) 项目根目录（自动定位为脚本所在目录） ----
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/configs/metaworld_4d.yaml"
 TRAIN_SCRIPT="$SCRIPT_DIR/train_robot.py"
 

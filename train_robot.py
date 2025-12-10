@@ -194,6 +194,33 @@ def adapt_final_layer_linear(state_dict, current_state_dict, model, verbose=True
         print(f"✓ {w_key} (and bias) adapted by frame-block copy (rows/frame={rows_per_frame}, T_pre={T_pre}, T_cur={T_cur})")
 
 
+def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
+    """
+    If the current model has shared MoE experts but the checkpoint is a dense DiT (no MoE keys),
+    copy the dense FFN weights into shared_experts and leave other experts random.
+    Mapping: fc1 -> gate_proj & up_proj, fc2 -> down_proj (bias not used in MoeMLP).
+    """
+    for idx, block in enumerate(model.blocks):
+        mlp = getattr(block, "mlp", None)
+        shared = getattr(mlp, "shared_experts", None)
+        if shared is None:
+            continue
+        prefix = f"blocks.{idx}.mlp"
+        # skip if ckpt already has shared_experts (MoE checkpoint)
+        if any(k.startswith(f"{prefix}.shared_experts") for k in state_dict.keys()):
+            continue
+        fc1_w = state_dict.get(f"{prefix}.fc1.weight", None)
+        fc2_w = state_dict.get(f"{prefix}.fc2.weight", None)
+        if fc1_w is None or fc2_w is None:
+            continue
+        # copy weights; shapes should match hidden->intermediate and intermediate->hidden
+        state_dict[f"{prefix}.shared_experts.gate_proj.weight"] = fc1_w.clone()
+        state_dict[f"{prefix}.shared_experts.up_proj.weight"] = fc1_w.clone()
+        state_dict[f"{prefix}.shared_experts.down_proj.weight"] = fc2_w.clone()
+        if verbose:
+            print(f"✓ Copied dense FFN -> shared_experts for block {idx}")
+
+
 #################################################################################
 #                                  Training Loop                                #
 #################################################################################
@@ -267,7 +294,10 @@ def main(args):
         # 2) Adapt final layer outputs per-frame block
         adapt_final_layer_linear(state_dict, model.state_dict(), model, verbose=accelerator.is_main_process)
 
-        # 3) Load adapted weights (allow missing due to modules like y_embedder difference)
+        # 3) If current model uses MoE shared experts but ckpt is dense, copy dense FFN -> shared_experts
+        adapt_shared_moe_from_dense(state_dict, model, verbose=accelerator.is_main_process)
+
+        # 4) Load adapted weights (allow missing due to modules like y_embedder difference)
         missing, unexpected = model.load_state_dict(state_dict, strict=False)
         if accelerator.is_main_process:
             print(f"✓ Successfully loaded & adapted pretrained weights from {args.rgb_init}")
@@ -276,7 +306,7 @@ def main(args):
             if unexpected:
                 print(f"Unexpected keys after load: {len(unexpected)}")
 
-        # 4) If text_cond changed, reset y_embedder to a simple class embedder
+        # 5) If text_cond changed, reset y_embedder to a simple class embedder
         if not args.text_cond:
             with torch.no_grad():
                 model.y_embedder = nn.Linear(args.num_classes, model.hidden_size, bias=True)
@@ -683,14 +713,23 @@ def main(args):
             # Save checkpoint
             if train_steps % args.ckpt_every == 0:
                 if accelerator.is_main_process:
-                    checkpoint = {
-                        "model": model.module.state_dict() if accelerator.num_processes > 1 else model.state_dict(),
-                        "optimizer": opt.state_dict(),
-                        "lr_scheduler": lr_scheduler.state_dict() if lr_scheduler is not None else None,
-                        "epoch": epoch,
-                        "step": train_steps,
-                        "args": args
-                    }
+                    # Optionally skip optimizer/lr state to shrink checkpoint size.
+                    if getattr(args, "save_model_only", False):
+                        checkpoint = {
+                            "model": model.module.state_dict() if accelerator.num_processes > 1 else model.state_dict(),
+                            "epoch": epoch,
+                            "step": train_steps,
+                            "args": args,
+                        }
+                    else:
+                        checkpoint = {
+                            "model": model.module.state_dict() if accelerator.num_processes > 1 else model.state_dict(),
+                            "optimizer": opt.state_dict(),
+                            "lr_scheduler": lr_scheduler.state_dict() if lr_scheduler is not None else None,
+                            "epoch": epoch,
+                            "step": train_steps,
+                            "args": args,
+                        }
                     checkpoint_path = f"{checkpoint_dir}/{train_steps:07d}.pt"
                     torch.save(checkpoint, checkpoint_path)
                     logger.info(f"Saved checkpoint to {checkpoint_path}")
@@ -732,6 +771,8 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt-every", type=int)
     parser.add_argument("--eval-every", type=int)
     parser.add_argument("--ckpt-wrapper", action="store_true")
+    parser.add_argument("--save-model-only", action="store_true",
+                        help="If set, checkpoints only contain model weights (no optimizer/lr scheduler).")
     parser.add_argument("--without-ema", action="store_true")
 
     # Checkpoint resume

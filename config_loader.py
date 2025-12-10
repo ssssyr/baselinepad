@@ -129,7 +129,7 @@ def save_config(config: argparse.Namespace, save_path: str):
                     'global_seed', 'num_workers', 'without_ema', 'log_every', 'eval_every',
                     'ckpt_every', 'ckpt_wrapper', 'resume', 'auto_resume', 'learning_rate',
                     'weight_decay', 'adam_beta1', 'adam_beta2', 'use_lr_scheduler', 'scheduler_type',
-                    'warmup_steps', 'min_lr_ratio'],
+                    'warmup_steps', 'min_lr_ratio', 'save_model_only'],
         'components': ['vae', 'vae_path', 'dit_init', 'rgb_init', 'attn_mask', 'dynamics', 'text_cond', 'clip_path',
                       'text_emb_size', 'use_depth', 'd_hidden_size', 'd_patch_size', 'depth_filter',
                       'action_steps', 'action_dim', 'action_scale', 'absolute_action', 'action_condition',
