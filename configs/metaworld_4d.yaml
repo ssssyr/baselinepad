@@ -31,9 +31,9 @@ training:
   adam_beta2: 0.999     # AdamW beta2 parameter
 
   # Learning Rate Scheduler Settings
-  use_lr_scheduler: false       # 关闭调度，学习率保持常数
+  use_lr_scheduler: true       # 关闭调度，学习率保持常数
   scheduler_type: "constant"
-  warmup_steps: 0
+  warmup_steps: 8000
   min_lr_ratio: 1.0
 
   # Logging and Checkpointing
@@ -41,7 +41,7 @@ training:
   eval_every: 50000   # 更频繁评估以匹配更短训练
   ckpt_every: 10000
   ckpt_wrapper: false
-  save_model_only: false  # 若为 true，则 checkpoint 仅保存模型权重
+  save_model_only: true  # 若为 true，则 checkpoint 仅保存模型权重
 
   # Resuming Training
   resume: null
@@ -86,7 +86,7 @@ components:
 
   # Loss Configuration
   action_loss_lambda: 1.0   # Weight for the action prediction loss
-  action_loss_start: 5000  # Step to start applying action loss
+  action_loss_start: 0     # Start applying action loss from step 0
 
 # ======================================================
 #                  MoE Settings
@@ -98,7 +98,7 @@ moe:
   aux_loss_weight: 0.01
   router_z_loss_weight: 0.001
   moe_start_layer: 14       # use MoE from layer index 14 (i.e., back 14 layers)
-  moe_shared_experts: 1     # remove shared experts to节省显存/算力
+  moe_shared_experts: 4     # match dense FFN width (1152*4) so shared branch can load pretrained weights
   use_modality_bias: true   # enable modality-aware routing
   modality_bias_strength_action: 1  # bias action tokens toward expert 0
 
