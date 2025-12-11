@@ -222,6 +222,12 @@ class SparseMoeBlock(nn.Module):
             self.last_aux_loss = None
             output = self.moe_infer(flat_states, flat_topk_idx, topk_weight.view(-1, 1)).view(*orig_shape)
 
+        # Optionally bypass MoE output for action tokens (modality_id == 1):
+        # keep their contribution only from the shared expert (dense path).
+        if modality_ids is not None:
+            action_mask = (modality_ids == 1).unsqueeze(-1)  # (B, T, 1)
+            output = output.masked_fill(action_mask, 0.0)
+
         if self.shared_experts is not None:
             output = output + self.shared_experts(identity)
 

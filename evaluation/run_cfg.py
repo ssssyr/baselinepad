@@ -1,12 +1,12 @@
 META_CONFIG = {
-    'ckpt_path': "/mnt/sda/syr/checkpoint/checkpoint1211//0040000.pt", # 使用你的模型
+    'ckpt_path': "/mnt/sda/syr/checkpoint/checkpoint1211//0010000.pt", # 使用你的模型
     'vae_path': "/home/syr/code/models/sd-vae-ft-mse/", # 更新为正确的VAE路径
     'clip_path': "/home/syr/code/models/clip-vit-base-patch32/", # 更新为正确的CLIP路径
     'thirdview_camera': 'corner3',
     'firstview_camera': 'gripperPOV',
     'use_depth': False, # whether to use depth
     'rollout_num': 5, # number of rollouts for each tasks
-    'max_steps': 30, # max planning steps for each rollout
+    'max_steps': 25, # max planning steps for each rollout
     'video_dir': "output",
     'visualize_prediction': True,
     'denoise_steps': 50, # joint denoise step
