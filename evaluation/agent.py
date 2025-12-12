@@ -62,7 +62,21 @@ class DiffusionAgent():
         )
         state_dict = checkpoint["model"]
         model_dict = self.model.state_dict()
-        state_dict = {k: v for k, v in state_dict.items() if k in model_dict}
+
+        # Map shared_experts weights if checkpoint used MoeMLP naming (gate_proj/up_proj/down_proj)
+        # but current model expects dense naming (fc1/fc2).
+        mapped = {}
+        for k, v in state_dict.items():
+            mapped[k] = v
+            if "shared_experts.gate_proj.weight" in k:
+                base = k.replace("gate_proj.weight", "")
+                fc1_key = base + "fc1.weight"
+                mapped[fc1_key] = v
+            if "shared_experts.down_proj.weight" in k:
+                base = k.replace("down_proj.weight", "")
+                fc2_key = base + "fc2.weight"
+                mapped[fc2_key] = v
+        state_dict = {k: v for k, v in mapped.items() if k in model_dict}
 
         # 计算模型参数的哈希值用于比较
         param_hash = 0
@@ -253,4 +267,3 @@ if __name__ == "__main__":
     agent.decode(rgb, samples)
     
         
-

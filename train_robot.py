@@ -198,7 +198,8 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
     """
     If the current model has shared MoE experts but the checkpoint is a dense DiT (no MoE keys),
     copy the dense FFN weights into shared_experts and leave other experts random.
-    Mapping: fc1 -> gate_proj & up_proj, fc2 -> down_proj (bias not used in MoeMLP).
+    - For SwiGLU shared_experts (old MoeMLP): fc1 -> gate_proj & up_proj, fc2 -> down_proj
+    - For GELU shared_experts (DenseGeluMLP): fc1 -> fc1, fc2 -> fc2
     """
     for idx, block in enumerate(model.blocks):
         mlp = getattr(block, "mlp", None)
@@ -213,20 +214,36 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
         fc2_w = state_dict.get(f"{prefix}.fc2.weight", None)
         if fc1_w is None or fc2_w is None:
             continue
-        gp_shape = mlp.shared_experts.gate_proj.weight.shape
-        dp_shape = mlp.shared_experts.down_proj.weight.shape
-        # Only copy when shapes match; otherwise keep shared_experts random.
-        if fc1_w.shape == gp_shape and fc2_w.shape == dp_shape:
-            state_dict[f"{prefix}.shared_experts.gate_proj.weight"] = fc1_w.clone()
-            state_dict[f"{prefix}.shared_experts.up_proj.weight"] = fc1_w.clone()
-            state_dict[f"{prefix}.shared_experts.down_proj.weight"] = fc2_w.clone()
-            if verbose:
-                print(f"✓ Copied dense FFN -> shared_experts for block {idx}")
-        else:
-            if verbose:
-                print(f"↻ Skip copying to shared_experts for block {idx} (shape mismatch: "
-                      f"fc1 {tuple(fc1_w.shape)} vs {tuple(gp_shape)}, "
-                      f"fc2 {tuple(fc2_w.shape)} vs {tuple(dp_shape)})")
+        # Dense GELU shared experts
+        if hasattr(shared, "fc1") and hasattr(shared, "fc2"):
+            gp_shape = shared.fc1.weight.shape
+            dp_shape = shared.fc2.weight.shape
+            if fc1_w.shape == gp_shape and fc2_w.shape == dp_shape:
+                state_dict[f"{prefix}.shared_experts.fc1.weight"] = fc1_w.clone()
+                state_dict[f"{prefix}.shared_experts.fc2.weight"] = fc2_w.clone()
+                if verbose:
+                    print(f"✓ Copied dense FFN -> shared_experts (GELU) for block {idx}")
+            else:
+                if verbose:
+                    print(f"↻ Skip copying to shared_experts for block {idx} (shape mismatch: "
+                          f"fc1 {tuple(fc1_w.shape)} vs {tuple(gp_shape)}, "
+                          f"fc2 {tuple(fc2_w.shape)} vs {tuple(dp_shape)})")
+        # SwiGLU shared experts (legacy)
+        elif hasattr(shared, "gate_proj") and hasattr(shared, "down_proj"):
+            gp_shape = shared.gate_proj.weight.shape
+            dp_shape = shared.down_proj.weight.shape
+            # Only copy when shapes match; otherwise keep shared_experts random.
+            if fc1_w.shape == gp_shape and fc2_w.shape == dp_shape:
+                state_dict[f"{prefix}.shared_experts.gate_proj.weight"] = fc1_w.clone()
+                state_dict[f"{prefix}.shared_experts.up_proj.weight"] = fc1_w.clone()
+                state_dict[f"{prefix}.shared_experts.down_proj.weight"] = fc2_w.clone()
+                if verbose:
+                    print(f"✓ Copied dense FFN -> shared_experts (SwiGLU) for block {idx}")
+            else:
+                if verbose:
+                    print(f"↻ Skip copying to shared_experts for block {idx} (shape mismatch: "
+                          f"fc1 {tuple(fc1_w.shape)} vs {tuple(gp_shape)}, "
+                          f"fc2 {tuple(fc2_w.shape)} vs {tuple(dp_shape)})")
 
 
 #################################################################################

@@ -7,6 +7,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+def _approx_gelu():
+    return nn.GELU(approximate="tanh")
+
 
 class MoEGate(nn.Module):
     """Token-level gating network that selects top-k experts per token."""
@@ -146,6 +149,19 @@ class MoeMLP(nn.Module):
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
+class DenseGeluMLP(nn.Module):
+    """Dense FFN using GELU (matches the original DiT FFN)."""
+
+    def __init__(self, hidden_size: int, intermediate_size: int):
+        super().__init__()
+        self.fc1 = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.act = _approx_gelu()
+        self.fc2 = nn.Linear(intermediate_size, hidden_size, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.fc2(self.act(self.fc1(x)))
+
+
 class SparseMoeBlock(nn.Module):
     """Sparse mixture of MoeMLP experts with optional shared experts."""
 
@@ -187,10 +203,10 @@ class SparseMoeBlock(nn.Module):
         self.n_shared_experts = n_shared_experts
         if self.n_shared_experts:
             shared_intermediate = embed_dim * self.n_shared_experts
-            self.shared_experts = MoeMLP(
+            # Use GELU dense FFN so shared path matches the original dense model.
+            self.shared_experts = DenseGeluMLP(
                 hidden_size=embed_dim,
                 intermediate_size=shared_intermediate,
-                pretraining_tp=pretraining_tp,
             )
         else:
             self.shared_experts = None
