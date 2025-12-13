@@ -30,7 +30,8 @@ class MoEGate(nn.Module):
         self.scoring_func = "softmax"
         self.alpha = aux_loss_alpha
         self.seq_aux = False
-        self.norm_topk_prob = False
+        # Normalize the top-k probabilities so they sum to 1 after truncation.
+        self.norm_topk_prob = True
         self.gating_dim = embed_dim
         self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.gating_dim)))
         self.use_modality_bias = use_modality_bias
@@ -55,8 +56,10 @@ class MoEGate(nn.Module):
         bsz, seq_len, hidden_dim = hidden_states.shape
         flat_states = hidden_states.reshape(-1, hidden_dim)
         logits = F.linear(flat_states, self.weight, None)
-        if self.use_modality_bias and modality_ids is not None and self.modality_bias is not None:
+        flat_modality: Optional[torch.Tensor] = None
+        if modality_ids is not None:
             flat_modality = modality_ids.reshape(-1)
+        if self.use_modality_bias and flat_modality is not None and self.modality_bias is not None:
             if flat_modality.numel() == flat_states.shape[0]:
                 bias = self.modality_bias.to(hidden_states.device)
                 logits = logits + bias[flat_modality]
@@ -70,31 +73,40 @@ class MoEGate(nn.Module):
             denominator = topk_weight.sum(dim=-1, keepdim=True) + 1e-20
             topk_weight = topk_weight / denominator
 
-        aux_loss: Optional[torch.Tensor]
+        aux_loss: Optional[torch.Tensor] = None
         if self.training and self.alpha > 0.0:
             scores_for_aux = scores
-            aux_topk = self.top_k
-            topk_idx_for_aux_loss = topk_idx.view(bsz, -1)
-            if self.seq_aux:
-                scores_for_seq_aux = scores_for_aux.view(bsz, seq_len, -1)
-                ce = torch.zeros(bsz, self.n_routed_experts, device=hidden_states.device)
-                ce.scatter_add_(
-                    1,
-                    topk_idx_for_aux_loss,
-                    torch.ones(bsz, seq_len * aux_topk, device=hidden_states.device),
-                ).div_(seq_len * aux_topk / self.n_routed_experts)
-                aux_loss = (ce * scores_for_seq_aux.mean(dim=1)).sum(dim=1).mean() * self.alpha
-            else:
-                mask_ce = F.one_hot(
-                    topk_idx_for_aux_loss.view(-1),
-                    num_classes=self.n_routed_experts,
-                )
-                ce = mask_ce.float().mean(0)
-                pi = scores_for_aux.mean(0)
-                fi = ce * self.n_routed_experts
-                aux_loss = (pi * fi).sum() * self.alpha
-        else:
-            aux_loss = None
+            topk_idx_for_aux_loss = topk_idx.view(-1, self.top_k)
+
+            # Exclude action tokens (modality_id == 1) from load-balancing aux loss so
+            # action embeddings are not driven by router regularization.
+            if not self.seq_aux and flat_modality is not None:
+                keep_mask = flat_modality != 1
+                if keep_mask.any():
+                    scores_for_aux = scores_for_aux[keep_mask]
+                    topk_idx_for_aux_loss = topk_idx_for_aux_loss[keep_mask]
+                else:
+                    scores_for_aux = None
+
+            if scores_for_aux is not None:
+                if self.seq_aux:
+                    scores_for_seq_aux = scores_for_aux.view(bsz, seq_len, -1)
+                    ce = torch.zeros(bsz, self.n_routed_experts, device=hidden_states.device)
+                    ce.scatter_add_(
+                        1,
+                        topk_idx.view(bsz, -1),
+                        torch.ones(bsz, seq_len * self.top_k, device=hidden_states.device),
+                    ).div_(seq_len * self.top_k / self.n_routed_experts)
+                    aux_loss = (ce * scores_for_seq_aux.mean(dim=1)).sum(dim=1).mean() * self.alpha
+                else:
+                    mask_ce = F.one_hot(
+                        topk_idx_for_aux_loss.view(-1),
+                        num_classes=self.n_routed_experts,
+                    )
+                    ce = mask_ce.float().mean(0)
+                    pi = scores_for_aux.mean(0)
+                    fi = ce * self.n_routed_experts
+                    aux_loss = (pi * fi).sum() * self.alpha
         return topk_idx, topk_weight, aux_loss
 
 
@@ -121,32 +133,20 @@ class AddAuxiliaryLoss(torch.autograd.Function):
 
 
 class MoeMLP(nn.Module):
-    """Single expert feed-forward network."""
+    """Single expert FFN using GELU+bias (aligns with DenseGeluMLP for init compatibility)."""
 
     def __init__(self, hidden_size: int, intermediate_size: int, pretraining_tp: int = 1):
         super().__init__()
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
         self.pretraining_tp = pretraining_tp
-        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
-        self.act_fn = nn.SiLU()
+        self.fc1 = nn.Linear(hidden_size, intermediate_size, bias=True)
+        self.act = _approx_gelu()
+        self.fc2 = nn.Linear(intermediate_size, hidden_size, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.pretraining_tp > 1:
-            slice_size = self.intermediate_size // self.pretraining_tp
-            gate_proj_slices = self.gate_proj.weight.split(slice_size, dim=0)
-            up_proj_slices = self.up_proj.weight.split(slice_size, dim=0)
-            down_proj_slices = self.down_proj.weight.split(slice_size, dim=1)
-
-            gate_proj = torch.cat([F.linear(x, gate) for gate in gate_proj_slices], dim=-1)
-            up_proj = torch.cat([F.linear(x, up) for up in up_proj_slices], dim=-1)
-            intermediate_states = (self.act_fn(gate_proj) * up_proj).split(slice_size, dim=-1)
-            down_proj = [F.linear(intermediate_states[i], down_proj_slices[i]) for i in range(self.pretraining_tp)]
-            return sum(down_proj)
-
-        return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+        # Pretraining TP path removed to keep parity with DenseGeluMLP and simplify init sharing.
+        return self.fc2(self.act(self.fc1(x)))
 
 
 class DenseGeluMLP(nn.Module):

@@ -197,10 +197,12 @@ def adapt_final_layer_linear(state_dict, current_state_dict, model, verbose=True
 def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
     """
     If the current model has shared MoE experts but the checkpoint is a dense DiT (no MoE keys),
-    copy the dense FFN weights into shared_experts and leave other experts random.
-    - For SwiGLU shared_experts (old MoeMLP): fc1 -> gate_proj & up_proj, fc2 -> down_proj
-    - For GELU shared_experts (DenseGeluMLP): fc1 -> fc1, fc2 -> fc2
+    copy the dense FFN weights into shared_experts AND (optionally) into all routed experts.
+    - For GELU shared_experts (DenseGeluMLP/MoeMLP): fc1 -> fc1, fc2 -> fc2
+    - For legacy SwiGLU shared_experts (old MoeMLP): fc1 -> gate_proj & up_proj, fc2 -> down_proj
+    Non-shared experts get a small noise perturbation to avoid perfect duplication.
     """
+    noise_std = 1e-3
     for idx, block in enumerate(model.blocks):
         mlp = getattr(block, "mlp", None)
         shared = getattr(mlp, "shared_experts", None)
@@ -250,6 +252,36 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
                     print(f"↻ Skip copying to shared_experts for block {idx} (shape mismatch: "
                           f"fc1 {tuple(fc1_w.shape)} vs {tuple(gp_shape)}, "
                           f"fc2 {tuple(fc2_w.shape)} vs {tuple(dp_shape)})")
+
+        # Also seed routed experts with dense FFN when checkpoint is dense (no experts.* keys yet)
+        experts = getattr(mlp, "experts", None)
+        if experts is None or any(k.startswith(f"{prefix}.experts.0") for k in state_dict.keys()):
+            continue
+        for e_idx, expert in enumerate(experts):
+            if not (hasattr(expert, "fc1") and hasattr(expert, "fc2")):
+                continue
+            fc1_shape_ok = expert.fc1.weight.shape == fc1_w.shape
+            fc2_shape_ok = expert.fc2.weight.shape == fc2_w.shape
+            if not (fc1_shape_ok and fc2_shape_ok):
+                if verbose:
+                    print(f"↻ Skip copying to expert {e_idx} in block {idx} (shape mismatch)")
+                continue
+            # copy dense weights
+            w1 = fc1_w.clone()
+            w2 = fc2_w.clone()
+            b1 = fc1_b.clone() if (fc1_b is not None and expert.fc1.bias is not None and expert.fc1.bias.shape == fc1_b.shape) else None
+            b2 = fc2_b.clone() if (fc2_b is not None and expert.fc2.bias is not None and expert.fc2.bias.shape == fc2_b.shape) else None
+            # add small noise to non-shared experts to break symmetry
+            w1.add_(torch.randn_like(w1) * noise_std)
+            w2.add_(torch.randn_like(w2) * noise_std)
+            state_dict[f"{prefix}.experts.{e_idx}.fc1.weight"] = w1
+            state_dict[f"{prefix}.experts.{e_idx}.fc2.weight"] = w2
+            if b1 is not None:
+                state_dict[f"{prefix}.experts.{e_idx}.fc1.bias"] = b1
+            if b2 is not None:
+                state_dict[f"{prefix}.experts.{e_idx}.fc2.bias"] = b2
+        if verbose and experts is not None:
+            print(f"✓ Seeded {len(experts)} experts from dense FFN for block {idx} (noise std={noise_std})")
 
 
 #################################################################################
