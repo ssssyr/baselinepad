@@ -212,6 +212,8 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
             continue
         fc1_w = state_dict.get(f"{prefix}.fc1.weight", None)
         fc2_w = state_dict.get(f"{prefix}.fc2.weight", None)
+        fc1_b = state_dict.get(f"{prefix}.fc1.bias", None)
+        fc2_b = state_dict.get(f"{prefix}.fc2.bias", None)
         if fc1_w is None or fc2_w is None:
             continue
         # Dense GELU shared experts
@@ -221,6 +223,10 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
             if fc1_w.shape == gp_shape and fc2_w.shape == dp_shape:
                 state_dict[f"{prefix}.shared_experts.fc1.weight"] = fc1_w.clone()
                 state_dict[f"{prefix}.shared_experts.fc2.weight"] = fc2_w.clone()
+                if fc1_b is not None and fc1_b.shape == shared.fc1.bias.shape:
+                    state_dict[f"{prefix}.shared_experts.fc1.bias"] = fc1_b.clone()
+                if fc2_b is not None and fc2_b.shape == shared.fc2.bias.shape:
+                    state_dict[f"{prefix}.shared_experts.fc2.bias"] = fc2_b.clone()
                 if verbose:
                     print(f"✓ Copied dense FFN -> shared_experts (GELU) for block {idx}")
             else:

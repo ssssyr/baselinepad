@@ -154,9 +154,10 @@ class DenseGeluMLP(nn.Module):
 
     def __init__(self, hidden_size: int, intermediate_size: int):
         super().__init__()
-        self.fc1 = nn.Linear(hidden_size, intermediate_size, bias=False)
+        # Keep bias to align with the original dense MLP and avoid systematic shifts.
+        self.fc1 = nn.Linear(hidden_size, intermediate_size, bias=True)
         self.act = _approx_gelu()
-        self.fc2 = nn.Linear(intermediate_size, hidden_size, bias=False)
+        self.fc2 = nn.Linear(intermediate_size, hidden_size, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.fc2(self.act(self.fc1(x)))

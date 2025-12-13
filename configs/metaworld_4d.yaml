@@ -99,8 +99,8 @@ moe:
   router_z_loss_weight: 0.001
   moe_start_layer: 14       # use MoE from layer index 14 (i.e., back 14 layers)
   moe_shared_experts: 4     # match dense FFN width (1152*4) so shared branch can load pretrained weights
-  use_modality_bias: true   # enable modality-aware routing
-  modality_bias_strength_action: 1  # bias action tokens toward expert 0
+  use_modality_bias: false   # enable modality-aware routing
+  modality_bias_strength_action: 0  # bias action tokens toward expert 0
 
 # ======================================================
 #                  WandB Logging

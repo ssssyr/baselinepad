@@ -76,7 +76,31 @@ class DiffusionAgent():
                 base = k.replace("down_proj.weight", "")
                 fc2_key = base + "fc2.weight"
                 mapped[fc2_key] = v
-        state_dict = {k: v for k, v in mapped.items() if k in model_dict}
+        # strip possible DistributedDataParallel prefix
+        cleaned = {}
+        for k, v in mapped.items():
+            if k.startswith("module."):
+                k = k[len("module."):]
+            cleaned[k] = v
+        state_dict = cleaned
+
+        # If checkpoint lacks shared_experts biases (older runs), fill zeros so load_state_dict stays strict.
+        for bias_key in ["shared_experts.fc1.bias", "shared_experts.fc2.bias"]:
+            full_keys = [k for k in model_dict.keys() if bias_key in k]
+            for k in full_keys:
+                if k not in state_dict:
+                    state_dict[k] = torch.zeros_like(model_dict[k])
+
+        # Debug overlap stats before we drop any keys
+        missing_keys = [k for k in model_dict.keys() if k not in state_dict]
+        unexpected_keys = [k for k in state_dict.keys() if k not in model_dict]
+        intersection = {k: v for k, v in state_dict.items() if k in model_dict}
+        print(f"🧭 State dict stats: ckpt_keys={len(state_dict)}, model_keys={len(model_dict)}, overlap={len(intersection)}")
+        if missing_keys:
+            print(f"⚠️ Missing keys (first 10): {missing_keys[:10]}")
+        if unexpected_keys:
+            print(f"⚠️ Unexpected keys (first 10): {unexpected_keys[:10]}")
+        state_dict = intersection
 
         # 计算模型参数的哈希值用于比较
         param_hash = 0
