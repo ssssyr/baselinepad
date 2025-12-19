@@ -7,7 +7,21 @@
 set -euo pipefail
 
 ENV_NAME="PAD"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+# 优先用 Python 3.10（兼容 mujoco-py 和 Torch cu121），可通过 `PYTHON_BIN=/path/to/python3.10 bash setup_cloud_env.sh` 覆盖
+if [ -z "${PYTHON_BIN:-}" ]; then
+  for c in python3.10 python3.11 python3.12 python3.9 python3; do
+    if command -v "$c" >/dev/null 2>&1; then
+      PYTHON_BIN="$c"
+      break
+    fi
+  done
+fi
+
+if [ -z "${PYTHON_BIN:-}" ]; then
+  echo "ERROR: No python interpreter found. Please install Python 3.10/3.11/3.12 (e.g., conda create -n pad310 python=3.10)."
+  exit 1
+fi
 
 echo "==> Using Python interpreter: ${PYTHON_BIN}"
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
@@ -25,9 +39,8 @@ echo "    Found Python ${PY_MAJOR_MINOR}"
 case "${PY_MAJOR_MINOR}" in
   3.9|3.10|3.11|3.12) ;;
   *)
-    echo "WARNING: PyTorch 2.3.x wheels (cu121) only support Python 3.9-3.12."
-    echo "         Set PYTHON_BIN=python3.10 (or 3.11/3.12) and rerun if install fails."
-    ;;
+    echo "ERROR: PyTorch cu121 wheels require Python 3.9-3.12. Please install a compatible Python (e.g., conda create -n pad310 python=3.10) and rerun with PYTHON_BIN pointing to it."
+    exit 1
 esac
 
 echo "==> Creating virtualenv: ${ENV_NAME}"

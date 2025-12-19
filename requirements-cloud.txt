@@ -1,15 +1,15 @@
 # PAD 环境（云端服务器）依赖清单
 # - 默认使用清华 PyPI 镜像，加上 PyTorch CU121 国内镜像；若需 CPU 版本，可删除“+cu121”并去掉 extra-index。
-# - 建议使用 Python 3.9/3.10/3.11/3.12（PyTorch 2.3 不支持 3.13）。
+# - 建议使用 Python 3.9/3.10/3.11/3.12（Torch cu121 仅支持到 3.12）。
 
 -i https://pypi.tuna.tsinghua.edu.cn/simple
 --extra-index-url https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/wheels/cu121
 --extra-index-url https://download.pytorch.org/whl/cu121
 
 # Core DL stack
-torch==2.3.1+cu121
-torchvision==0.18.1+cu121
-torchaudio==2.3.1+cu121
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
+torchaudio==2.5.1+cu121
 timm==0.9.12
 diffusers==0.25.0
 accelerate==0.24.1
