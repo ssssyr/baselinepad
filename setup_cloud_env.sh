@@ -15,6 +15,21 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "==> Detecting Python version"
+PY_MAJOR_MINOR=$("${PYTHON_BIN}" - <<'PY'
+import sys
+print(f"{sys.version_info.major}.{sys.version_info.minor}")
+PY
+)
+echo "    Found Python ${PY_MAJOR_MINOR}"
+case "${PY_MAJOR_MINOR}" in
+  3.9|3.10|3.11|3.12) ;;
+  *)
+    echo "WARNING: PyTorch 2.3.x wheels (cu121) only support Python 3.9-3.12."
+    echo "         Set PYTHON_BIN=python3.10 (or 3.11/3.12) and rerun if install fails."
+    ;;
+esac
+
 echo "==> Creating virtualenv: ${ENV_NAME}"
 "${PYTHON_BIN}" -m venv "${ENV_NAME}"
 source "${ENV_NAME}/bin/activate"
@@ -24,7 +39,7 @@ pip install --upgrade pip setuptools wheel
 
 echo "==> Installing dependencies from requirements-cloud.txt (mirror mode)"
 export PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"
-export PIP_EXTRA_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/wheels/cu118 https://download.pytorch.org/whl/cu118"
+export PIP_EXTRA_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/wheels/cu121 https://download.pytorch.org/whl/cu121"
 pip install -r requirements-cloud.txt
 
 echo "==> Done."
