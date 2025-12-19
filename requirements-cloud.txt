@@ -1,0 +1,43 @@
+# PAD 环境（云端服务器）依赖清单
+# - 默认使用清华 PyPI 镜像，加上 PyTorch CU118 国内镜像；若需 CPU 版本，可删除“+cu118”并去掉 extra-index。
+# - 建议使用 Python 3.9 或 3.10，便于 mujoco-py/gym 兼容。
+
+-i https://pypi.tuna.tsinghua.edu.cn/simple
+--extra-index-url https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/wheels/cu118
+--extra-index-url https://download.pytorch.org/whl/cu118
+
+# Core DL stack
+torch==2.1.2+cu118
+torchvision==0.16.2+cu118
+torchaudio==2.1.2+cu118
+timm==0.9.12
+diffusers==0.25.0
+accelerate==0.24.1
+transformers==4.36.2
+
+# General utilities
+numpy==1.24.4
+scipy==1.10.1
+PyYAML==6.0.1
+tqdm==4.66.1
+matplotlib==3.8.2
+pillow==10.1.0
+opencv-python==4.8.1.78
+decord==0.6.0
+mediapy==1.1.8
+wandb==0.15.12
+
+# RL / simulation stack
+gym==0.21.0
+mujoco-py==2.1.2.14
+cython==0.29.36
+pygame==2.5.2
+glfw==2.6.2
+robosuite==1.4.1
+
+# Dev / optional tools
+memory-profiler==0.61.0
+pytest==7.4.3
+
+# Install bundled metaworld package
+-e ./metaworld
