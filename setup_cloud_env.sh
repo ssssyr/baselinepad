@@ -49,13 +49,17 @@ pip install --upgrade pip wheel
 echo "==> Pinning setuptools for gym==0.21.0 build compatibility"
 pip install "setuptools==65.5.1"
 
-# Use TUNA mirrors by default
+# Use TUNA mirrors by default (pip)
 export PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"
 export PIP_EXTRA_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/wheels/cu121 https://download.pytorch.org/whl/cu121"
 
-# Build gym==0.21.0 without isolation so it uses the pinned setuptools
-echo "==> Preinstalling gym==0.21.0 without build isolation"
-PIP_NO_BUILD_ISOLATION=1 pip install "gym==0.21.0"
+# Install gym via conda to avoid building from source (gym 0.21.0 has setup.py quirks)
+echo "==> Installing gym==0.21.0 via conda-forge (prebuilt wheel)"
+conda install -y -n "${ENV_NAME}" -c conda-forge "gym==0.21.0"
+# Re-activate to ensure conda-installed packages are on PATH
+# shellcheck disable=SC1090
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${ENV_NAME}"
 
 echo "==> Installing dependencies from requirements-cloud.txt (mirror mode)"
 # Disable build isolation globally to reuse pinned setuptools for other sdists
