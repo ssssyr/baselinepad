@@ -61,6 +61,23 @@ conda install -y -n "${ENV_NAME}" -c conda-forge "gym==0.21.0"
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${ENV_NAME}"
 
+# Fix invalid requirement metadata in conda gym 0.21.0 (opencv-python (>=3.) -> (>=3.0))
+echo "==> Patching gym METADATA for pip compatibility"
+python - <<'PY'
+import importlib.metadata
+from pathlib import Path
+
+dist = importlib.metadata.distribution("gym")
+meta_path = Path(dist._path) / "METADATA"  # _path is available on Distribution
+text = meta_path.read_text()
+fixed = text.replace("opencv-python (>=3.) ; extra == 'all'", "opencv-python (>=3.0) ; extra == 'all'")
+if text != fixed:
+    meta_path.write_text(fixed)
+    print(f"Patched {meta_path}")
+else:
+    print("No patch needed")
+PY
+
 echo "==> Installing dependencies from requirements-cloud.txt (mirror mode)"
 # Disable build isolation globally to reuse pinned setuptools for other sdists
 export PIP_NO_BUILD_ISOLATION=1
