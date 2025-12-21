@@ -6,6 +6,9 @@
 --extra-index-url https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/wheels/cu121
 --extra-index-url https://download.pytorch.org/whl/cu121
 
+# gym==0.21.0 sdist fails to build with newer setuptools; pin an older version
+setuptools==65.5.1
+
 # Core DL stack
 torch==2.5.1+cu121
 torchvision==0.20.1+cu121

@@ -8,47 +8,46 @@ set -euo pipefail
 
 ENV_NAME="PAD"
 
-# 优先用 Python 3.10（兼容 mujoco-py 和 Torch cu121），可通过 `PYTHON_BIN=/path/to/python3.10 bash setup_cloud_env.sh` 覆盖
-if [ -z "${PYTHON_BIN:-}" ]; then
-  for c in python3.10 python3.11 python3.12 python3.9 python3; do
-    if command -v "$c" >/dev/null 2>&1; then
-      PYTHON_BIN="$c"
-      break
-    fi
-  done
-fi
+PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
 
-if [ -z "${PYTHON_BIN:-}" ]; then
-  echo "ERROR: No python interpreter found. Please install Python 3.10/3.11/3.12 (e.g., conda create -n pad310 python=3.10)."
+if ! command -v conda >/dev/null 2>&1; then
+  echo "ERROR: 'conda' not found. Please install Miniconda/Anaconda first."
   exit 1
 fi
 
-echo "==> Using Python interpreter: ${PYTHON_BIN}"
-if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-  echo "ERROR: ${PYTHON_BIN} not found. Please install Python 3.9/3.10 first."
-  exit 1
-fi
-
-echo "==> Detecting Python version"
-PY_MAJOR_MINOR=$("${PYTHON_BIN}" - <<'PY'
-import sys
-print(f"{sys.version_info.major}.{sys.version_info.minor}")
-PY
-)
-echo "    Found Python ${PY_MAJOR_MINOR}"
-case "${PY_MAJOR_MINOR}" in
+case "${PYTHON_VERSION}" in
   3.9|3.10|3.11|3.12) ;;
   *)
-    echo "ERROR: PyTorch cu121 wheels require Python 3.9-3.12. Please install a compatible Python (e.g., conda create -n pad310 python=3.10) and rerun with PYTHON_BIN pointing to it."
+    echo "ERROR: PyTorch cu121 wheels require Python 3.9-3.12. Set PYTHON_VERSION to one of these."
     exit 1
+    ;;
 esac
 
-echo "==> Creating virtualenv: ${ENV_NAME}"
-"${PYTHON_BIN}" -m venv "${ENV_NAME}"
-source "${ENV_NAME}/bin/activate"
+# Prevent accidental overwrite of an existing env
+if conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
+  echo "ERROR: Conda env '${ENV_NAME}' already exists. Remove it with 'conda env remove -n ${ENV_NAME}' or set ENV_NAME to another name."
+  exit 1
+fi
+
+echo "==> Creating conda env: ${ENV_NAME} (python=${PYTHON_VERSION})"
+conda create -y -n "${ENV_NAME}" "python=${PYTHON_VERSION}"
+
+echo "==> Activating conda env"
+# shellcheck disable=SC1090
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${ENV_NAME}"
+
+echo "    Using Python at $(which python)"
+python - <<'PY'
+import sys
+print(f"    Python version: {sys.version.split()[0]}")
+PY
 
 echo "==> Upgrading pip"
-pip install --upgrade pip setuptools wheel
+pip install --upgrade pip wheel
+
+echo "==> Pinning setuptools for gym==0.21.0 build compatibility"
+pip install "setuptools==65.5.1"
 
 echo "==> Installing dependencies from requirements-cloud.txt (mirror mode)"
 export PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"
@@ -57,4 +56,4 @@ pip install -r requirements-cloud.txt
 
 echo "==> Done."
 echo "Activate the env next time with:"
-echo "  source ${ENV_NAME}/bin/activate"
+echo "  conda activate ${ENV_NAME}"
