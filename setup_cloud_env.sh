@@ -66,11 +66,13 @@ echo "==> Patching gym METADATA for pip compatibility"
 python - <<'PY'
 import importlib.metadata
 from pathlib import Path
+import re
 
 dist = importlib.metadata.distribution("gym")
 meta_path = Path(dist._path) / "METADATA"  # _path is available on Distribution
 text = meta_path.read_text()
-fixed = text.replace("opencv-python (>=3.) ; extra == 'all'", "opencv-python (>=3.0) ; extra == 'all'")
+# Fix invalid requirement specifiers like opencv-python (>=3.) under different extras
+fixed = re.sub(r"opencv-python \(>=3\.\)(\s*; extra == '[^']+')", r"opencv-python (>=3.0)\1", text)
 if text != fixed:
     meta_path.write_text(fixed)
     print(f"Patched {meta_path}")
