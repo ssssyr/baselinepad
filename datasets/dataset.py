@@ -8,7 +8,7 @@ Key fixes:
 - stable padding across episode boundary for features/depth/actions
 - consistent depth fallback shapes
 - labels always available when text_cond=False
-- return order matches train loop: x_cond, x, depth_cond, depth, action_cond, action, y
+- return order matches train loop: x_cond, x, depth_cond, depth, action_cond, action, force_cond, y
 """
 
 import os
@@ -18,6 +18,39 @@ import cv2
 import torch
 from torch.utils.data import Dataset
 from PIL import Image
+
+
+# -------- force stats helpers --------
+def resolve_force_stats(args, feature_path):
+    if not getattr(args, "use_force", False):
+        return None, None
+
+    force_mean = getattr(args, "force_mean", None)
+    force_std = getattr(args, "force_std", None)
+    if (force_mean is not None and force_std is not None
+            and not isinstance(force_mean, bool) and not isinstance(force_std, bool)):
+        return np.array(force_mean, dtype=np.float32), np.array(force_std, dtype=np.float32)
+
+    stats_path = getattr(args, "force_stats_path", None)
+    if stats_path is None and feature_path:
+        stats_root = feature_path.split("+")[0]
+        stats_path = os.path.join(stats_root, "force_stats.json")
+    if stats_path and os.path.exists(stats_path):
+        with open(stats_path, "r") as f:
+            payload = json.load(f)
+        mean = np.array(payload.get("mean", [0, 0, 0, 0, 0, 0]), dtype=np.float32)
+        std = np.array(payload.get("std", [1, 1, 1, 1, 1, 1]), dtype=np.float32)
+        return mean, std
+
+    print("⚠️ force_stats.json not found; defaulting to mean=0,std=1")
+    return np.zeros(6, dtype=np.float32), np.ones(6, dtype=np.float32)
+
+
+def normalize_force(force, mean, std):
+    if mean is None or std is None:
+        return force
+    std = np.where(std < 1e-6, 1.0, std)
+    return (force - mean) / std
 
 
 # -------- optional helper (unused by default, kept for completeness) --------
@@ -45,10 +78,12 @@ class CustomDataset2(Dataset):
     def __init__(self, features_dir, args):
         self.features_dir = features_dir
         self.args = args
+        self.force_mean, self.force_std = resolve_force_stats(args, features_dir)
         (self.condition_files, self.features_files,
          self.cond_depth_files, self.depth_files,
          self.labels, self.ins_emb_files,
-         self.cond_action, self.action_list) = self.process_dataset(
+         self.cond_action, self.action_list,
+         self.cond_force) = self.process_dataset(
             features_dir, skip_step=args.skip_step, video_only=False
         )
 
@@ -57,6 +92,7 @@ class CustomDataset2(Dataset):
         cond_depth_file, depth_file = [], []
         labels, ins_emb_file = [], []
         cond_action, action_list = [], []
+        cond_force = []
 
         features_dirs = features_dir.split("+")
         episode_info = []
@@ -115,6 +151,10 @@ class CustomDataset2(Dataset):
                     cond_action.append(episode_info[idx]["state"])
                 else:
                     cond_action.append(None)
+                if getattr(self.args, "use_force", False):
+                    cond_force.append(episode_info[idx].get("force", None))
+                else:
+                    cond_force.append(None)
 
                 # 未来帧（稳定填充）
                 feats, depths, acts = [], [], []
@@ -148,7 +188,7 @@ class CustomDataset2(Dataset):
 
         print("length of dataset", len(condition_file))
         return (condition_file, features_file, cond_depth_file, depth_file,
-                labels, ins_emb_file, cond_action, action_list)
+                labels, ins_emb_file, cond_action, action_list, cond_force)
 
     def __len__(self):
         assert len(self.features_files) == len(self.labels), \
@@ -228,9 +268,22 @@ class CustomDataset2(Dataset):
             act = np.zeros((1, action_size), dtype=np.float32)
             cact = np.zeros((1, max(1, self.args.action_dim)), dtype=np.float32)
 
+        # Force (EE 6D)
+        if getattr(self.args, "use_force", False):
+            force_val = self.cond_force[idx]
+            if force_val is None:
+                force = np.zeros((1, 6), dtype=np.float32)
+            else:
+                force = np.array(force_val, dtype=np.float32).reshape(1, 6)
+            if self.force_mean is not None and self.force_std is not None:
+                force = normalize_force(force, self.force_mean, self.force_std)
+        else:
+            force = np.zeros((1, 6), dtype=np.float32)
+
         return (torch.from_numpy(x_cond), torch.from_numpy(x),
                 torch.from_numpy(dcond).float(), torch.from_numpy(depth).float(),
                 torch.from_numpy(cact).float(), torch.from_numpy(act).float(),
+                torch.from_numpy(force).float(),
                 torch.from_numpy(y).float())
 
 
@@ -263,7 +316,9 @@ class RobotDataset(Dataset):
         self.cond_rgb_file, self.rgb_file = [], []          # 当前帧 / 未来帧路径（RGB latent）
         self.cond_depth_file, self.depth_file = [], []      # 当前帧 / 未来帧路径（Depth latent）
         self.cond_action, self.action = [], []              # 当前位姿 / 未来位姿序列
+        self.cond_force = []                                # 当前帧 EE 力
         self.ins_emb_file, self.labels = [], []             # 文本embedding / episode标签
+        self.force_mean, self.force_std = resolve_force_stats(args, features_dir)
 
         # 1) 读取所有 step，并把相对路径归一为绝对路径
         step_infos = []
@@ -344,6 +399,8 @@ class RobotDataset(Dataset):
                     self.cond_depth_file.append(cond["depth_1"])
                 if getattr(args, "action_steps", 0) > 0:
                     self.cond_action.append(cond["state"])
+                if getattr(args, "use_force", False):
+                    self.cond_force.append(cond.get("force", None))
                 # 未来帧
                 self.rgb_file.append(future_rgb)                     # 长度 H
                 if getattr(args, "use_depth", False):
@@ -427,6 +484,18 @@ class RobotDataset(Dataset):
             action = np.zeros((1, self.args.action_dim * self.args.action_steps), dtype=np.float32)
             cact = np.zeros((1, self.args.action_dim), dtype=np.float32)
 
+        # ----- Force (EE 6D) -----
+        if getattr(self.args, "use_force", False):
+            force_val = self.cond_force[idx] if idx < len(self.cond_force) else None
+            if force_val is None:
+                force = np.zeros((1, 6), dtype=np.float32)
+            else:
+                force = np.array(force_val, dtype=np.float32).reshape(1, 6)
+            if self.force_mean is not None and self.force_std is not None:
+                force = normalize_force(force, self.force_mean, self.force_std)
+        else:
+            force = np.zeros((1, 6), dtype=np.float32)
+
         return (
             torch.from_numpy(x_cond),
             torch.from_numpy(x),
@@ -434,5 +503,6 @@ class RobotDataset(Dataset):
             torch.from_numpy(depth).float(),
             torch.from_numpy(cact).float(),
             torch.from_numpy(action).float(),
+            torch.from_numpy(force).float(),
             torch.from_numpy(y).float(),
         )

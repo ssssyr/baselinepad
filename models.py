@@ -298,7 +298,7 @@ class FinalLayer(nn.Module):
             a = self.a_linear(a)
             # a = self.a_head(x[:, start:end])
         if self.use_depth:
-            start,end = self.args.start_idx[2],self.args.end_idx[2]
+            start,end = self.args.start_idx[3],self.args.end_idx[3]
             d = x[:, start:end]
             d_shift, d_scale = self.d_adaLN_modulation(c).chunk(2, dim=1)
             d = modulate(self.d_norm_final(d), d_shift, d_scale)
@@ -345,14 +345,19 @@ class DiT(nn.Module):
         self.use_modality_bias = bool(getattr(args, "use_modality_bias", False))
         self.modality_bias_strength_action = float(getattr(args, "modality_bias_strength_action", 0.0))
         self.modality_bias_strength_depth = float(getattr(args, "modality_bias_strength_depth", 0.0))
-        self.moe_num_modalities = 3
+        self.use_force = bool(getattr(args, "use_force", False))
+        self.force_dim = int(getattr(args, "force_dim", 6))
+        self.args.use_force = self.use_force
+        self.args.force_dim = self.force_dim
+        self.moe_num_modalities = 4 if self.use_force else 3
         self.moe_modality_bias_init = None
         if self.use_modality_bias:
             bias = torch.zeros(self.moe_num_modalities, self.moe_num_experts)
             if self.modality_bias_strength_action != 0.0:
                 bias[1, 0] = self.modality_bias_strength_action
             if self.modality_bias_strength_depth != 0.0:
-                bias[2, 1] = self.modality_bias_strength_depth
+                depth_modality_id = 3 if self.use_force else 2
+                bias[depth_modality_id, 1] = self.modality_bias_strength_depth
             self.moe_modality_bias_init = bias
         x_embedder_channels = in_channels if not args.dynamics else in_channels+in_channels*args.predict_horizon
 
@@ -367,6 +372,9 @@ class DiT(nn.Module):
                 self.a_pos_embed = nn.Parameter(torch.zeros(1, a_token, hidden_size), requires_grad=True)
             else:
                 self.a_pos_embed = nn.Parameter(torch.zeros(1, a_token, hidden_size), requires_grad=False)
+        if self.use_force:
+            self.force_embedder = nn.Linear(self.force_dim, hidden_size)
+            self.f_pos_embed = nn.Parameter(torch.zeros(1, 1, hidden_size), requires_grad=True)
         if args.use_depth:
             d_embedder_channels = 1 if not args.dynamics else 1+args.predict_horizon
             d_patch_size = args.d_patch_size
@@ -390,16 +398,24 @@ class DiT(nn.Module):
 
         rgb_l = num_patches
         a_l = self.args.action_steps if not args.action_condition else 1
+        force_l = 1 if self.use_force else 0
         depth_l = 0 if not args.use_depth else self.d_num_patches
 
-        self.args.start_idx = [0, rgb_l, rgb_l+a_l]
-        self.args.end_idx = [rgb_l, rgb_l+a_l, rgb_l+a_l+depth_l]
+        self.args.start_idx = [0, rgb_l, rgb_l + a_l, rgb_l + a_l + force_l]
+        self.args.end_idx = [rgb_l, rgb_l + a_l, rgb_l + a_l + force_l, rgb_l + a_l + force_l + depth_l]
 
         attn_mask = None
         if args.attn_mask:
-            token_num = rgb_l + a_l + depth_l
+            token_num = rgb_l + a_l + force_l + depth_l
             attn_mask = torch.ones((token_num, token_num), dtype=torch.bool)
             attn_mask[:rgb_l,rgb_l:] = False
+            if self.use_force and args.use_depth and depth_l > 0:
+                force_start = rgb_l + a_l
+                force_end = force_start + force_l
+                depth_start = force_end
+                depth_end = depth_start + depth_l
+                attn_mask[force_start:force_end, depth_start:depth_end] = False
+                attn_mask[depth_start:depth_end, force_start:force_end] = False
         blocks = []
         for layer_idx in range(depth):
             block_uses_moe = self.use_moe and (self.moe_start_layer is None or layer_idx >= self.moe_start_layer)
@@ -459,6 +475,11 @@ class DiT(nn.Module):
             else:
                 a_pos_embed = get_1d_sincos_pos_embed_from_grid(h,np.arange(pos, dtype=np.float32))
                 self.a_pos_embed.data.copy_(torch.from_numpy(a_pos_embed).float().unsqueeze(0))
+
+        if self.use_force:
+            nn.init.xavier_uniform_(self.force_embedder.weight)
+            nn.init.constant_(self.force_embedder.bias, 0)
+            nn.init.xavier_uniform_(self.f_pos_embed)
 
         # Initialize label embedding table:
         nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02)
@@ -529,7 +550,7 @@ class DiT(nn.Module):
             return outputs
         return ckpt_forward
 
-    def forward(self, x, t, y, x_cond=None, action_cond=None, noised_action=None, depth_cond=None, noised_depth=None):
+    def forward(self, x, t, y, x_cond=None, action_cond=None, noised_action=None, force_cond=None, depth_cond=None, noised_depth=None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
@@ -549,6 +570,15 @@ class DiT(nn.Module):
                 noised_action = torch.cat([noised_action,action_cond],dim=-1)
             a = self.a_embedder(noised_action)+self.a_pos_embed # (N, action_steps, D)
             x = torch.cat([x,a],dim=1) # (N, T + action_step, D)
+        if self.use_force:
+            if force_cond is None:
+                force_cond = torch.zeros((x.shape[0], 1, self.force_dim), device=x.device, dtype=x.dtype)
+            else:
+                if force_cond.dim() == 2:
+                    force_cond = force_cond.unsqueeze(1)
+                force_cond = force_cond.to(device=x.device, dtype=x.dtype)
+            f = self.force_embedder(force_cond) + self.f_pos_embed
+            x = torch.cat([x, f], dim=1)
         if self.args.use_depth:
             noised_depth = torch.cat([noised_depth,depth_cond],dim=1)
             d = self.d_embedder(noised_depth) + self.d_pos_embed
@@ -557,8 +587,11 @@ class DiT(nn.Module):
         modality_ids = torch.zeros((x.shape[0], x.shape[1]), device=x.device, dtype=torch.long)
         if self.args.action_steps>0:
             modality_ids[:, self.args.start_idx[1]:self.args.end_idx[1]] = 1
-        if self.args.use_depth:
+        if self.use_force:
             modality_ids[:, self.args.start_idx[2]:self.args.end_idx[2]] = 2
+        if self.args.use_depth:
+            depth_modality_id = 3 if self.use_force else 2
+            modality_ids[:, self.args.start_idx[3]:self.args.end_idx[3]] = depth_modality_id
 
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)

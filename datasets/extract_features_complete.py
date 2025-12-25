@@ -24,6 +24,15 @@ from time import time
 
 from diffusers.models import AutoencoderKL
 
+
+def update_force_stats(stats, force):
+    force = np.asarray(force, dtype=np.float64)
+    stats["count"] += 1
+    delta = force - stats["mean"]
+    stats["mean"] += delta / stats["count"]
+    delta2 = force - stats["mean"]
+    stats["m2"] += delta * delta2
+
 #################################################################################
 #                             Image Preprocessing Functions                         #
 #################################################################################
@@ -83,7 +92,11 @@ def main(args):
     # Find all task subdirectories by looking for dataset_info.json
     task_json_paths = sorted(glob(os.path.join(args.data_path, "*/dataset_info.json")))
     if not task_json_paths:
-        raise ValueError(f"No 'dataset_info.json' found in any subdirectories of {args.data_path}. Please check your data structure.")
+        single_path = os.path.join(args.data_path, "dataset_info.json")
+        if os.path.exists(single_path):
+            task_json_paths = [single_path]
+        else:
+            raise ValueError(f"No 'dataset_info.json' found under {args.data_path}. Please check your data structure.")
     
     print(f"Found {len(task_json_paths)} tasks to process.")
 
@@ -94,12 +107,16 @@ def main(args):
     global_train_steps = 0
     global_episode_idx = 0
     all_dataset_info = []
+    force_stats = {"count": 0, "mean": np.zeros(6, dtype=np.float64), "m2": np.zeros(6, dtype=np.float64)}
 
     with torch.no_grad():
         # Outer loop: iterate over each task
         for task_json_path in task_json_paths:
             task_dir = os.path.dirname(task_json_path)
-            task_name = os.path.basename(task_dir)
+            if os.path.abspath(task_dir) == os.path.abspath(args.data_path):
+                task_name = "single_task"
+            else:
+                task_name = os.path.basename(task_dir)
             print(f"\n{'='*60}\n--- Processing Task: {task_name} ---\n{'='*60}")
 
             with open(task_json_path, "r") as f:
@@ -114,6 +131,7 @@ def main(args):
                 instruction = traj_data["instruction"]
                 # IMPORTANT: Check if your JSON has an 'action' field. If not, this will use 'features'.
                 action_list = traj_data.get("action", traj_data.get("features"))
+                force_list = traj_data.get("force_features", None)
                 if not action_list:
                     print(f"  [Warning] No 'action' or 'features' found for episode {global_episode_idx}. Skipping.")
                     continue
@@ -135,6 +153,10 @@ def main(args):
 
                 print(f"  Processing episode {global_episode_idx} (Task: {task_name}, Traj: {traj_id_in_task}): '{instruction}', {len(episode_images)} images")
 
+                frame_count = len(episode_images)
+                if force_list is not None and len(force_list) != frame_count:
+                    print(f"  [Warning] force_features length ({len(force_list)}) != images ({frame_count}) for episode {global_episode_idx}")
+
                 # Loop through each frame in the trajectory
                 for frame_idx, img_path in enumerate(episode_images):
                     img = Image.open(img_path).convert("RGB")
@@ -155,6 +177,13 @@ def main(args):
                         action = [0, 0, 0, 1]  # Default value if action data is missing for a frame
                         state = [0, 0, 0, 1]
 
+                    if force_list is not None and frame_idx < len(force_list):
+                        force = force_list[frame_idx]
+                    else:
+                        force = [0, 0, 0, 0, 0, 0]
+
+                    update_force_stats(force_stats, force)
+
                     # Append frame-level information to the global dataset list
                     all_dataset_info.append({
                         "idx": str(global_train_steps),
@@ -165,7 +194,8 @@ def main(args):
                         "instruction": instruction,
                         "ins_emb_path": f'episode{global_episode_idx:07}/text_clip.npy',
                         "action": action,
-                        "state": state
+                        "state": state,
+                        "force": force
                     })
 
                     global_train_steps += 1
@@ -186,6 +216,20 @@ def main(args):
 
     print(f"Dataset info saved to {final_json_path}")
     print(f"Total samples: {len(all_dataset_info)}")
+
+    if force_stats["count"] > 0:
+        denom = max(force_stats["count"] - 1, 1)
+        var = force_stats["m2"] / denom
+        std = np.sqrt(var)
+        stats_payload = {
+            "count": int(force_stats["count"]),
+            "mean": force_stats["mean"].tolist(),
+            "std": std.tolist()
+        }
+        stats_path = os.path.join(args.features_path, "force_stats.json")
+        with open(stats_path, "w") as f:
+            json.dump(stats_payload, f, indent=2)
+        print(f"Force stats saved to {stats_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

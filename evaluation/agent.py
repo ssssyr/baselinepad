@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 import argparse
 import os
+import json
 from models import DiT_models
 from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
@@ -9,6 +10,25 @@ from PIL import Image
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+
+def load_force_stats(args):
+    if not getattr(args, "use_force", False):
+        return None, None
+    if getattr(args, "force_mean", None) is not None and getattr(args, "force_std", None) is not None:
+        return (np.array(args.force_mean, dtype=np.float32),
+                np.array(args.force_std, dtype=np.float32))
+    stats_path = getattr(args, "force_stats_path", None)
+    if stats_path is None and getattr(args, "feature_path", None):
+        stats_root = str(args.feature_path).split("+")[0]
+        stats_path = os.path.join(stats_root, "force_stats.json")
+    if stats_path and os.path.exists(stats_path):
+        with open(stats_path, "r") as f:
+            payload = json.load(f)
+        mean = np.array(payload.get("mean", [0, 0, 0, 0, 0, 0]), dtype=np.float32)
+        std = np.array(payload.get("std", [1, 1, 1, 1, 1, 1]), dtype=np.float32)
+        return mean, std
+    print("⚠️ force_stats.json not found; defaulting to mean=0,std=1")
+    return np.zeros(6, dtype=np.float32), np.ones(6, dtype=np.float32)
 
 class DiffusionAgent():
     def __init__(self, ckpt_path, vae_path="/cephfs/shared/llm/sd-vae-ft-mse", clip_path="/cephfs/shared/llm/clip-vit-base-patch32",denoise_steps=200, device_id=0):
@@ -42,10 +62,21 @@ class DiffusionAgent():
 
         self.args = args
 
-        new_attr = ["action_condition", "action_dim", "action_steps", "d_hidden_size", "use_depth", 'ckpt_wrapper']
+        new_attr = ["action_condition", "action_dim", "action_steps", "d_hidden_size", "use_depth",
+                    "ckpt_wrapper"]
         for attr in new_attr:
             if not hasattr(self.args, attr):
                 setattr(self.args, attr, False)
+        if not hasattr(self.args, "use_force"):
+            self.args.use_force = False
+        if not hasattr(self.args, "force_dim"):
+            self.args.force_dim = 6
+        if not hasattr(self.args, "force_stats_path"):
+            self.args.force_stats_path = None
+        if not hasattr(self.args, "force_mean"):
+            self.args.force_mean = None
+        if not hasattr(self.args, "force_std"):
+            self.args.force_std = None
         # if not hasattr(self.args, "action_condition"):
         #     self.args.action_condition = False
         if torch.cuda.is_available():
@@ -121,6 +152,8 @@ class DiffusionAgent():
         self.model.to(self.device)
         self.model.eval()
 
+        self.force_mean, self.force_std = load_force_stats(self.args)
+
         # 验证加载后的模型参数
         with torch.no_grad():
             # 获取第一个参数作为指纹
@@ -166,7 +199,7 @@ class DiffusionAgent():
         return depth
 
     
-    def action(self, text, rgb=None, depth=None,state=None):
+    def action(self, text, rgb=None, depth=None, state=None, force=None):
         y = self.encode_text(text)
         x_cond = self.encode_image(rgb)
         if depth is not None:
@@ -197,13 +230,26 @@ class DiffusionAgent():
         print(f"🎯 Input state: {state[:4] if state is not None else None}")
         print(f"🎯 Action scale: {getattr(self.args, 'action_scale', 'unknown')}")
 
+        if getattr(self.args, "use_force", False):
+            if force is None:
+                force_arr = np.zeros((1, 1, self.args.force_dim), dtype=np.float32)
+            else:
+                force_arr = np.array(force, dtype=np.float32).reshape(1, 1, self.args.force_dim)
+            if self.force_mean is not None and self.force_std is not None:
+                std = np.where(self.force_std < 1e-6, 1.0, self.force_std)
+                force_arr = (force_arr - self.force_mean.reshape(1, 1, -1)) / std.reshape(1, 1, -1)
+            force_cond = torch.tensor(force_arr).float().to(self.device)
+        else:
+            force_cond = None
+
         model_kwargs = {
             "y": y,
             "x_cond": x_cond,
             "noised_action": z_a,
             "depth_cond": depth_cond,
             "noised_depth": z_d,
-            "action_cond": action_cond
+            "action_cond": action_cond,
+            "force_cond": force_cond,
         }
         if self.args.action_steps ==0 and not self.args.use_depth:
             samples = self.diffusion.p_sample_loop(

@@ -10,6 +10,7 @@ import cv2
 import random
 import torch
 import time
+from scipy.spatial.transform import Rotation
 
 os.environ["MUJOCO_GL"] = "egl"
 from metaworld.envs import (ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE, ALL_V2_ENVIRONMENTS_GOAL_HIDDEN)
@@ -62,6 +63,24 @@ def plot_word():
     draw.text((572,10), task2, font=fnt_titile, fill='red')
 
     return img_word
+
+def get_ee_force_torque(env):
+    try:
+        force_idx = env.model.sensor_name2id("ee_force")
+        torque_idx = env.model.sensor_name2id("ee_torque")
+        force_adr = env.model.sensor_adr[force_idx]
+        torque_adr = env.model.sensor_adr[torque_idx]
+        force_world = env.sim.data.sensordata[force_adr:force_adr+3].copy()
+        torque_world = env.sim.data.sensordata[torque_adr:torque_adr+3].copy()
+        body_id = env.model.body_name2id("hand")
+        quat = env.sim.data.body_xquat[body_id].copy()
+        rotation = Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]])
+        R_world_to_ee = rotation.as_matrix().T
+        force_ee = R_world_to_ee @ force_world
+        torque_ee = R_world_to_ee @ torque_world
+        return np.concatenate([force_ee, torque_ee])
+    except Exception:
+        return np.zeros(6, dtype=np.float32)
 
 # motion planner for metaworld tasks
 def motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, image_3, thirdview, predict_img=None, img_word=None):
@@ -176,7 +195,8 @@ for selected_id, task in enumerate(task_list):
             curr_xyz, curr_gripper = state[:3], state[3] # current pose
 
             # plan next target with PAD agent
-            samples,sample_a,sample_depth = agent.action(text, rgb, depth, state)
+            force = get_ee_force_torque(env)
+            samples,sample_a,sample_depth = agent.action(text, rgb, depth, state, force)
 
             if META_CONFIG['visualize_prediction']:
                 predict_img = agent.decode_rgb(rgb, samples) # np.array shape (256,256*3)

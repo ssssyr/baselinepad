@@ -292,13 +292,22 @@ def main(args):
             logger.info(f"Beginning epoch {epoch}...")
         if not args.dynamics:
             raise NotImplementedError
-        for x_cond, x, y, action, depth_cond, depth, action_cond, loss_mask in loader:
+        for batch in loader:
+            if len(batch) == 8:
+                x_cond, x, depth_cond, depth, action_cond, action, force_cond, y = batch
+                loss_mask = None
+            else:
+                x_cond, x, y, action, depth_cond, depth, action_cond, loss_mask = batch
+                force_cond = None
             x_cond = x_cond.squeeze(dim=1).to(device) if args.dynamics else None # (B,1,4,32,32)
             x = x.squeeze(dim=1).to(device) # (B, 1, 4, 32,32)
             y = y.squeeze(dim=1).to(device) # text: (B,512) class:(B)
             # action (B,action_steps,action_dim) 
             t = torch.randint(0, diffusion.num_timesteps, (x.shape[0],), device=device)
-            loss_mask = loss_mask.squeeze(dim=1).to(device)
+            if loss_mask is None:
+                loss_mask = torch.ones((x.shape[0], 1), device=device)
+            else:
+                loss_mask = loss_mask.squeeze(dim=1).to(device)
 
             if args.use_depth:
                 depth_cond = depth_cond.to(device)
@@ -312,6 +321,8 @@ def main(args):
                 model_kwargs['action'] = action
             if args.action_steps > 0 and args.action_condition:
                 model_kwargs['action_cond'] = action_cond
+            if getattr(args, "use_force", False) and force_cond is not None:
+                model_kwargs['force_cond'] = force_cond.to(device)
             if eval_batch == None:
                 eval_batch = {
                     'input_img': x_cond,
@@ -320,6 +331,7 @@ def main(args):
                     'future_depth' : depth,
                     'rela_action' : action,
                     'action_cond': action_cond,
+                    'force_cond': force_cond if force_cond is not None else None,
                     'y': y,
                     'loss_mask': loss_mask
                 }
@@ -399,6 +411,7 @@ def main(args):
                     target_depth = eval_batch['future_depth']
                     rela_action = eval_batch['rela_action']
                     action_cond = eval_batch['action_cond']
+                    force_cond = eval_batch.get('force_cond')
                     y = eval_batch['y']
                     loss_mask = eval_batch['loss_mask']
                     #target_action = eval_batch['a']
@@ -413,6 +426,12 @@ def main(args):
                         eval_model_kwargs['noised_action'] = noise_action
                     if args.action_steps > 0 and args.action_condition:
                         eval_model_kwargs['action_cond'] = action_cond
+                    # 只在 force_cond 非 None 时传入
+                    if force_cond is not None and torch.is_tensor(force_cond):
+                        eval_model_kwargs['force_cond'] = force_cond
+                    elif getattr(args, "use_force", False):
+                        # use_force=True 但数据为 None，传零张量
+                        eval_model_kwargs['force_cond'] = torch.zeros(input_img.shape[0], 1, args.force_dim, device=device)
                     samples = eval_diffusion.p_sample_loop(
                         model, z.shape, z, clip_denoised=False, model_kwargs=eval_model_kwargs, progress=True,
                         device=device
@@ -559,6 +578,12 @@ if __name__ == "__main__":
     parser.add_argument("--d_patch_size", type=int, default=8)
     # use depth_filter
     parser.add_argument("--depth_filter", action="store_true")
+    # use force
+    parser.add_argument("--use_force", action="store_true")
+    parser.add_argument("--force_dim", type=int, default=6)
+    parser.add_argument("--force_stats_path", type=str, default=None)
+    parser.add_argument("--force_mean", type=float, nargs="+")
+    parser.add_argument("--force_std", type=float, nargs="+")
     # action_scale
     parser.add_argument("--action_scale", type=float, default=10)
     # eval_every
