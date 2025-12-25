@@ -17,6 +17,7 @@ timm==0.9.12
 diffusers==0.25.0
 accelerate==0.24.1
 transformers==4.36.2
+huggingface-hub==0.24.6  # newer versions drop cached_download which diffusers==0.25.0 still imports
 
 # General utilities
 numpy==1.24.4
@@ -25,7 +26,7 @@ PyYAML==6.0.1
 tqdm==4.66.1
 matplotlib==3.8.2
 pillow==10.1.0
-opencv-python==4.8.1.78
+opencv-python-headless==4.8.1.78  # headless avoids libGL.so.1 system dep on cloud GPUs
 decord==0.6.0
 mediapy==1.1.8
 wandb==0.15.12

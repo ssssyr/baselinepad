@@ -6,7 +6,8 @@ Meta-World v2 数据采集脚本（按钮任务专用：corner3相机视角）
 - 每条轨迹的 JSON 条目仅包含：
    {
      "instruction": <str>,
-     "features": [[x,y,z,grip], ...],   # 世界坐标下的绝对状态
+     "features": [[x,y,z,grip], ...],          # 世界坐标（4维）
+     "force_features": [[fx,fy,fz,tx,ty,tz], ...],  # EE坐标系六维力（6维）
      "success": 0/1
    }
 """
@@ -19,6 +20,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
+from scipy.spatial.transform import Rotation
 
 # 让 mujoco-py 离屏渲染
 os.environ.setdefault("MUJOCO_GL", "egl")
@@ -200,6 +202,43 @@ def render_rgb(env, h: int, w: int, camera: str) -> np.ndarray:
     frame = env.sim.render(width=w, height=h, camera_name=camera)
     return frame  # 如遇画面倒置，可改：return frame[::-1]
 
+def get_ee_force_torque(env) -> np.ndarray:
+    """
+    获取EE坐标系下的六维力 [fx, fy, fz, tx, ty, tz]
+
+    Args:
+        env: Meta-World环境实例
+
+    Returns:
+        np.ndarray: 6维数组 [fx, fy, fz, tx, ty, tz]，EE坐标系
+    """
+    # 获取传感器数据索引和维度
+    force_idx = env.model.sensor_name2id("ee_force")
+    torque_idx = env.model.sensor_name2id("ee_torque")
+
+    # 获取传感器的数据维度（force和torque都是3维）
+    force_adr = env.model.sensor_adr[force_idx]  # 传感器在sensordata中的起始位置
+    torque_adr = env.model.sensor_adr[torque_idx]
+
+    # 获取世界坐标系下的力和力矩（MuJoCo传感器默认输出世界坐标系）
+    force_world = env.sim.data.sensordata[force_adr:force_adr+3].copy()  # [fx, fy, fz]
+    torque_world = env.sim.data.sensordata[torque_adr:torque_adr+3].copy()  # [tx, ty, tz]
+
+    # 获取EE（hand body）的姿态四元数 [w, x, y, z]
+    body_id = env.model.body_name2id("hand")
+    quat = env.sim.data.body_xquat[body_id].copy()  # [w, x, y, z]
+
+    # 将四元数转换为旋转矩阵
+    # 注意：MuJoCo四元数格式是 [w, x, y, z]，scipy需要 [x, y, z, w]
+    rotation = Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]])
+    R_world_to_ee = rotation.as_matrix().T  # 转置得到世界到EE的变换
+
+    # 转换到EE坐标系
+    force_ee = R_world_to_ee @ force_world
+    torque_ee = R_world_to_ee @ torque_world
+
+    return np.concatenate([force_ee, torque_ee])  # [fx, fy, fz, tx, ty, tz]
+
 def collect_one_trajectory(
     env,
     policy,
@@ -207,10 +246,11 @@ def collect_one_trajectory(
     task_dir: Path,
     image_resolution: Tuple[int, int],
     camera_name: str,
-) -> Tuple[bool, int, List[List[float]]]:
+) -> Tuple[bool, int, List[List[float]], List[List[float]]]:
     """
-    采集一条轨迹：保存 PNG 帧，并返回 (success, num_steps, states)
+    采集一条轨迹：保存 PNG 帧，并返回 (success, num_steps, states, forces)
       - states: 每步 4 维绝对状态 [x,y,z,grip]（从 obs[:4] 取）
+      - forces: 每步 6 维 EE 坐标系力 [fx,fy,fz,tx,ty,tz]
     目录结构：task_dir / f"class_{traj_idx:06d}"/ frame_0000.png, ...
     """
     traj_dir = task_dir / f"class_{traj_idx:06d}"
@@ -223,13 +263,17 @@ def collect_one_trajectory(
     max_len = int(getattr(env, "max_path_length", 500))
 
     states: List[List[float]] = []
+    forces: List[List[float]] = []
     info_last = {}
     for step_idx in range(max_len):
         # 图像
         img = render_rgb(env, H, W, camera_name)
         Image.fromarray(img).save(traj_dir / f"frame_{step_idx:04d}.png")
         # 绝对状态（世界系）
-        states.append((obs[:4]).tolist())
+        states.append((obs[:4]).tolist())  # [x, y, z, grip]
+
+        # 获取EE坐标系下的六维力（单独存储）
+        forces.append(get_ee_force_torque(env).tolist())  # [fx, fy, fz, tx, ty, tz]
 
         # 与环境交互：使用专家策略动作（不保存动作）
         action = policy.get_action(obs)
@@ -238,7 +282,7 @@ def collect_one_trajectory(
         if int(info.get("success", 0)) == 1 or done:
             break
 
-    return (int(info_last.get("success", 0)) == 1), len(states), states
+    return (int(info_last.get("success", 0)) == 1), len(states), states, forces
 
 def main():
     print("=== Meta-World v2 按压任务数据采集 ===")
@@ -276,7 +320,7 @@ def main():
         pbar = tqdm(total=NUM_TRAJECTORIES_PER_TASK, desc=f"Collecting {task_name}", ncols=100)
         try:
             while saved < NUM_TRAJECTORIES_PER_TASK:
-                success, nsteps, states = collect_one_trajectory(
+                success, nsteps, states, forces = collect_one_trajectory(
                     env=env,
                     policy=policy,
                     traj_idx=attempt,
@@ -287,7 +331,8 @@ def main():
 
                 traj_entry = {
                     "instruction": instruction,
-                    "features": states,     # [[x,y,z,grip], ...] 世界坐标
+                    "features": states,      # [[x,y,z,grip], ...] 世界坐标（4维）
+                    "force_features": forces,  # [[fx,fy,fz,tx,ty,tz], ...] EE坐标系（6维）
                     "success": int(success)
                 }
 

@@ -466,7 +466,8 @@ class SawyerXYZEnv(SawyerMocapBase, metaclass=abc.ABCMeta):
         self.init_tcp = self.tcp_center
 
     def _get_state_rand_vec(self):
-        self._freeze_rand_vec=False 
+        # 修复bug: 不要强制设置_freeze_rand_vec=False，否则set_task的freeze功能失效
+        # self._freeze_rand_vec=False  # 注释掉这行，让freeze功能正常工作
         choice = 'original noise' # large noise/original noise
         if self._freeze_rand_vec:
             assert self._last_rand_vec is not None

@@ -16,7 +16,6 @@ from metaworld.envs import (ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE, ALL_V2_ENVIRONM
 
 from evaluation.agent import DiffusionAgent
 from evaluation.run_cfg import INSTRUCTIONS, META_CONFIG
-
 def set_random_seed(seed=None):
     """Set random seed for reproducibility or randomness"""
     if seed is None:
@@ -188,7 +187,8 @@ for selected_id, task in enumerate(task_list):
                 a_seq = sample_a.reshape(agent.args.action_steps, agent.args.action_dim)  # (S,4)
                 print(f"🧭 Full predicted action seq (xyzg per step):\n{np.array2string(a_seq, precision=3, floatmode='fixed')}")
                 print(f"🧭 Gripper seq: {np.array2string(a_seq[:,3], precision=3, floatmode='fixed')}, current gripper: {curr_gripper:.3f}")
-                target = a_seq[0] / agent.args.action_scale
+                target_step = 1 if agent.args.action_steps > 1 else 0
+                target = a_seq[target_step] / agent.args.action_scale
                 target_xyz, target_gripper = target[:3], target[3]
             else:
                 target = sample_a/agent.args.action_scale
