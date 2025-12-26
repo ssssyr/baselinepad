@@ -6,7 +6,7 @@
 # ======================================================
 training:
   # Paths
-  feature_path: "/home/ct_24210860031/812datasets/SYR/metaworldcorner3-features_button_press_v2"  # Path to MetaWorld data
+  feature_path: "/home/ct_24210860031/812datasets/SYR/metaworld_corner3_all_with_force_features"  # Path to MetaWorld data
   video_path: null
   results_dir: "results_metaworld_4d"
 
@@ -57,7 +57,7 @@ components:
 
   # Initialization
   dit_init: null
-  rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre_mw_ft.pt"
+  rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/best_action_loss.pt"
 
   # Attention
   attn_mask: false
