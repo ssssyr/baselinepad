@@ -212,7 +212,7 @@ def run_single_task(agent, task, selected_id, INSTRUCTIONS, META_CONFIG, rollout
 
 def main():
     # Configuration
-    ROLLOUT_NUM = 10  # Change from 5 to 10
+    ROLLOUT_NUM = 30  # Change from 10 to 30
     SAVE_VIDEO = False  # Don't save videos for batch testing
 
     # Get all 50 tasks from INSTRUCTIONS

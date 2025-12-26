@@ -84,6 +84,11 @@ components:
   action_condition: true   # Disable action conditioning to enable temporal learning
   learnable_action_pos: false # Use fixed sin-cos positional embeddings for actions
 
+  # Force Conditioning - 六维力/力矩输入
+  use_force: true              # Enable 6D force/torque input
+  force_dim: 6                # [fx, fy, fz, tx, ty, tz]
+  force_stats_path: null      # Will auto-detect from feature_path/force_stats.json
+
   # Loss Configuration
   action_loss_lambda: 2.0   # Weight for the action prediction loss
   action_loss_start: 0     # Start applying action loss from step 0
