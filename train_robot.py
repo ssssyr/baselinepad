@@ -414,6 +414,16 @@ def main(args):
 
     if accelerator.is_main_process:
         logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
+        # Print force module status
+        use_force = getattr(args, 'use_force', False)
+        logger.info(f"Force Module: {'ENABLED' if use_force else 'DISABLED'}")
+        if use_force:
+            logger.info(f"Force Dimension: {getattr(args, 'force_dim', 6)}")
+        # Print token structure
+        if hasattr(args, 'start_idx') and hasattr(args, 'end_idx'):
+            logger.info(f"Token Structure: start_idx={args.start_idx}, end_idx={args.end_idx}")
+            total_tokens = sum(args.end_idx) - sum(args.start_idx[:-1])
+            logger.info(f"Total Tokens: {total_tokens} (RGB=256, Action={args.end_idx[1]-args.start_idx[1]}, Force={args.end_idx[2]-args.start_idx[2] if len(args.end_idx) > 2 else 0}, Depth={args.end_idx[3]-args.start_idx[3] if len(args.end_idx) > 3 else 0})")
 
     # Optimizer
     lr = float(getattr(args, 'learning_rate', 1e-4))
