@@ -47,10 +47,32 @@ def resolve_force_stats(args, feature_path):
 
 
 def normalize_force(force, mean, std):
+    """
+    归一化力数据（带截断处理离群值）
+
+    Args:
+        force: 原始力数据 [fx, fy, fz, tx, ty, tz]
+        mean: 全局均值
+        std: 全局标准差
+
+    Returns:
+        归一化后的力数据
+    """
     if mean is None or std is None:
         return force
+
+    force = np.array(force, dtype=np.float32)
+
+    # 1. 先截断离群值（限制传感器量程）
+    #    力截断到 ±100N，力矩截断到 ±10Nm
+    force[:3] = np.clip(force[:3], -100, 100)   # fx, fy, fz (牛顿)
+    force[3:] = np.clip(force[3:], -10, 10)     # tx, ty, tz (牛·米)
+
+    # 2. 再归一化
     std = np.where(std < 1e-6, 1.0, std)
-    return (force - mean) / std
+    normalized = (force - mean) / std
+
+    return normalized
 
 
 # -------- optional helper (unused by default, kept for completeness) --------
