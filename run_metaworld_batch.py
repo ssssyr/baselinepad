@@ -14,6 +14,7 @@ import random
 import torch
 import time
 from tabulate import tabulate
+from scipy.spatial.transform import Rotation
 
 os.environ["MUJOCO_GL"] = "egl"
 from metaworld.envs import (ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE, ALL_V2_ENVIRONMENTS_GOAL_HIDDEN)
@@ -66,6 +67,25 @@ def plot_word():
     draw.text((572, 10), task2, font=fnt_titile, fill='red')
 
     return img_word
+
+def get_ee_force_torque(env):
+    """Get end-effector force and torque in EE frame"""
+    try:
+        force_idx = env.model.sensor_name2id("ee_force")
+        torque_idx = env.model.sensor_name2id("ee_torque")
+        force_adr = env.model.sensor_adr[force_idx]
+        torque_adr = env.model.sensor_adr[torque_idx]
+        force_world = env.sim.data.sensordata[force_adr:force_adr+3].copy()
+        torque_world = env.sim.data.sensordata[torque_adr:torque_adr+3].copy()
+        body_id = env.model.body_name2id("hand")
+        quat = env.sim.data.body_xquat[body_id].copy()
+        rotation = Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]])
+        R_world_to_ee = rotation.as_matrix().T
+        force_ee = R_world_to_ee @ force_world
+        torque_ee = R_world_to_ee @ torque_world
+        return np.concatenate([force_ee, torque_ee])
+    except Exception:
+        return np.zeros(6, dtype=np.float32)
 
 # motion planner for metaworld tasks
 def motion_planner(target_xyz, target_gripper, curr_xyz, curr_gripper, env, image_3, thirdview, predict_img=None, img_word=None, save_video=False):
@@ -172,8 +192,9 @@ def run_single_task(agent, task, selected_id, INSTRUCTIONS, META_CONFIG, rollout
             state = env._get_obs()[:4]
             curr_xyz, curr_gripper = state[:3], state[3]
 
-            # plan next target with PAD agent
-            samples, sample_a, sample_depth = agent.action(text, rgb, depth, state)
+            # plan next target with PAD agent (with force/torque input)
+            force = get_ee_force_torque(env)
+            samples, sample_a, sample_depth = agent.action(text, rgb, depth, state, force)
 
             predict_img = None
             if save_video and META_CONFIG['visualize_prediction']:
@@ -183,7 +204,7 @@ def run_single_task(agent, task, selected_id, INSTRUCTIONS, META_CONFIG, rollout
             # Use the first predicted step as the immediate target pose
             if agent.args.action_steps > 0 and sample_a is not None:
                 a_seq = sample_a.reshape(agent.args.action_steps, agent.args.action_dim)
-                target_step = 1 if agent.args.action_steps > 1 else 0
+                target_step = 0  # Always use the first predicted step
                 target = a_seq[target_step] / agent.args.action_scale
                 target_xyz, target_gripper = target[:3], target[3]
             else:
