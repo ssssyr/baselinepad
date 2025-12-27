@@ -9,7 +9,7 @@ set -e
 
 # ---- 0) 项目根目录（按你的实际路径） ----
 SCRIPT_DIR="/home/ct_24210860031/812code/SYR/baselinepad"
-CONFIG_FILE="$SCRIPT_DIR/configs/metaworld_4d.yaml"
+CONFIG_FILE="$SCRIPT_DIR/configs/metaworld_4d_dense_extended.yaml"
 TRAIN_SCRIPT="$SCRIPT_DIR/train_robot.py"
 
 # ---- 1) 打印基础信息 ----
