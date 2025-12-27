@@ -1,0 +1,122 @@
+# Configuration for Dense Extended Baseline (for fair MoE comparison)
+# Extended model: hidden_size=1536, depth=32, ~1373M parameters
+
+# ======================================================
+#               General Training Settings
+# ======================================================
+training:
+  # Paths
+  feature_path: "/home/ct_24210860031/812datasets/SYR/metaworld_corner3_all_with_force_features"
+  video_path: null
+  results_dir: "results_metaworld_4d_dense_extended"
+
+  # Model - Extended Dense Baseline
+  model: "DiT-XL/2-Extended"  # ~1373M parameters
+  image_size: 256
+  num_classes: 1000
+  predict_horizon: 3
+  skip_step: 4
+
+  # Training Loop
+  epochs: 1500
+  global_batch_size: 64
+  global_seed: 42
+  num_workers: 8
+  without_ema: false
+
+  # Optimizer Settings
+  learning_rate: 5e-5
+  weight_decay: 0.0
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+
+  # Learning Rate Scheduler
+  use_lr_scheduler: true
+  scheduler_type: "constant"
+  warmup_steps: 8000
+  min_lr_ratio: 1.0
+
+  # Logging and Checkpointing
+  log_every: 100
+  eval_every: 50000
+  ckpt_every: 10000
+  ckpt_wrapper: false
+  save_model_only: true
+
+  # Resuming Training
+  resume: null
+  auto_resume: true
+
+# ======================================================
+#                 Component Settings
+# ======================================================
+components:
+  # VAE
+  vae: "ema"
+  vae_path: "/home/ct_24210860031/812code/SYR/models/sd-vae-ft-mse"
+
+  # Initialization
+  dit_init: null
+  rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/best_action_loss.pt"
+
+  # Attention
+  attn_mask: false
+
+  # Dynamics
+  dynamics: true
+
+  # Text Conditioning
+  text_cond: true
+  clip_path: "/home/ct_24210860031/812code/SYR/models/clip-vit-base-patch32"
+  text_emb_size: 512
+
+  # Depth Conditioning
+  use_depth: false
+  d_hidden_size: 32
+  d_patch_size: 8
+  depth_filter: false
+
+  # Action Conditioning
+  action_steps: 3
+  action_dim: 4
+  action_scale: 1
+  absolute_action: true
+  action_condition: true
+  learnable_action_pos: false
+
+  # Force Conditioning
+  use_force: true
+  force_dim: 6
+  force_stats_path: null
+
+  # Loss Configuration
+  action_loss_lambda: 2.0
+  action_loss_start: 0
+
+# ======================================================
+#                  MoE Settings (DISABLED)
+# ======================================================
+moe:
+  use_moe: false  # DENSE baseline, no MoE
+  num_experts: 4
+  moe_top_k: 2
+  aux_loss_weight: 0.01
+  router_z_loss_weight: 0.001
+
+# ======================================================
+#                  WandB Logging
+# ======================================================
+wandb:
+  use_wandb: true
+  wandb_project: "metaworld-dense-baseline-comparison"
+  wandb_run_name: "metaworld_4d_dense_extended"
+
+# ======================================================
+#               MetaWorld Environment Settings
+# ======================================================
+metaworld:
+  task_names: ["button-press-v2"]
+  data_path: ""
+  image_size: 256
+  use_depth: false
+  camera_name: "corner3"

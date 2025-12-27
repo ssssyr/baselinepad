@@ -611,9 +611,38 @@ def DiT_S_8(**kwargs):
     return DiT(depth=12, hidden_size=384, patch_size=8, num_heads=6, **kwargs)
 
 
+#################################################################################
+#                        Extended Dense Baselines (MoE Comparison)               #
+#################################################################################
+
+def DiT_XL_2_Extended(**kwargs):
+    """
+    Extended Dense Baseline for MoE Comparison: ~1373M parameters
+
+    Configuration:
+        hidden_size: 1536
+        depth: 32
+        mlp_ratio: 4.0
+        num_heads: 24 (head_dim = 64)
+        patch_size: 2
+
+    This configuration matches the MoE version (1363.63M) within 0.68%,
+    providing a fair comparison baseline.
+
+    Compared to original DiT-XL/2 (677M):
+        - 2.03x parameters
+        - Deeper network (32 vs 28 layers)
+        - Wider hidden dimension (1536 vs 1152)
+    """
+    return DiT(depth=32, hidden_size=1536, patch_size=2, num_heads=24, mlp_ratio=4.0, **kwargs)
+
+
 DiT_models = {
+    # === Original DiT configs ===
     'DiT-XL/2': DiT_XL_2,  'DiT-XL/4': DiT_XL_4,  'DiT-XL/8': DiT_XL_8,
     'DiT-L/2':  DiT_L_2,   'DiT-L/4':  DiT_L_4,   'DiT-L/8':  DiT_L_8,
     'DiT-B/2':  DiT_B_2,   'DiT-B/4':  DiT_B_4,   'DiT-B/8':  DiT_B_8,
     'DiT-S/2':  DiT_S_2,   'DiT-S/4':  DiT_S_4,   'DiT-S/8':  DiT_S_8,
+    # === Extended Dense Baseline (for MoE comparison) ===
+    'DiT-XL/2-Extended': DiT_XL_2_Extended,  # ~1373M
 }
