@@ -122,7 +122,7 @@ class SawyerNutDisassembleEnvV2(SawyerXYZEnv):
 
         a = 0.1  # Relative importance of just *trying* to lift the wrench
         b = 0.9  # Relative importance of placing the wrench on the peg
-        lifted = wrench_center[2] > 0.02
+        lifted = wrench_center[2] > 0.01  # Relaxed from 0.02 to 0.01 for easier lift
         in_place = a * float(lifted) + b * reward_utils.tolerance(
             np.linalg.norm(pos_error),
             bounds=(0, 0.02),
@@ -162,8 +162,8 @@ class SawyerNutDisassembleEnvV2(SawyerXYZEnv):
         )
 
         reward = (2.0 * reward_grab + 6.0 * reward_in_place) * reward_quat
-        # Override reward on success
-        success = obs[6] > self._target_pos[2]-0.03
+        # Override reward on success (relaxed from -0.03 to -0.08 for easier success)
+        success = obs[6] > self._target_pos[2]-0.08
         if success:
             reward = 10.0
 

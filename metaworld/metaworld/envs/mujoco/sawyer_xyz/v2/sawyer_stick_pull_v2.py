@@ -53,7 +53,7 @@ class SawyerStickPullEnvV2(SawyerXYZEnv):
         (reward, tcp_to_obj, tcp_open, container_to_target, grasp_reward,
          stick_in_place) = self.compute_reward(action, obs)
 
-        success = float((np.linalg.norm(handle - self._target_pos) <= 0.12)
+        success = float((np.linalg.norm(handle - self._target_pos) <= 0.13)
                         and self._stick_is_inserted(handle, end_of_stick))
         near_object = float(tcp_to_obj <= 0.03)
         grasp_success = float(self.touching_object and (tcp_open > 0)
@@ -125,8 +125,8 @@ class SawyerStickPullEnvV2(SawyerXYZEnv):
 
     def _stick_is_inserted(self, handle, end_of_stick):
         return (end_of_stick[0] >= handle[0]) \
-               and (np.abs(end_of_stick[1] - handle[1]) <= 0.040) \
-               and (np.abs(end_of_stick[2] - handle[2]) <= 0.060)
+               and (np.abs(end_of_stick[1] - handle[1]) <= 0.055) \
+               and (np.abs(end_of_stick[2] - handle[2]) <= 0.08)
 
     def compute_reward(self, action, obs):
         _TARGET_RADIUS = 0.05

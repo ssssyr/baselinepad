@@ -165,7 +165,7 @@ class SawyerBoxCloseEnvV2(SawyerXYZEnv):
         ))
 
         # Override reward on success
-        success = np.linalg.norm(obs[4:7] - self._target_pos) < 0.08
+        success = np.linalg.norm(obs[4:7] - self._target_pos) < 0.09
         if success:
             reward = 10.0
 

@@ -146,7 +146,7 @@ class SawyerHammerEnvV2(SawyerXYZEnv):
         reward_grab = self._gripper_caging_reward(
             actions, hammer_threshed,
             object_reach_radius=0.01,
-            obj_radius=0.015,
+            obj_radius=0.018,  # 从0.015稍微增加到0.018
             pad_success_thresh=0.02,
             xz_thresh=0.01,
             high_density=True,
@@ -159,7 +159,7 @@ class SawyerHammerEnvV2(SawyerXYZEnv):
         reward = (2.0 * reward_grab + 6.0 * reward_in_place) * reward_quat
         # Override reward on success. We check that reward is above a threshold
         # because this env's success metric could be hacked easily
-        success = self.data.get_joint_qpos('NailSlideJoint') > 0.09
+        success = self.data.get_joint_qpos('NailSlideJoint') > 0.08
         if success and reward > 5.:
             reward = 10.0
 

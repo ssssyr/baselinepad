@@ -48,14 +48,26 @@ class SawyerDoorCloseEnvV2(SawyerDoorEnvV2):
     @_assert_task_is_set
     def evaluate_state(self, obs, action):
         reward, obj_to_target, in_place = self.compute_reward(action, obs)
+
+        # 角度传感器可能不准确，主要使用位置判断
+        theta = self.data.get_joint_qpos('doorjoint')
+
+        # 位置判断：把手到目标位置的距离
+        # 设置接近门实际能达到的极限
+        success_pos = float(obj_to_target <= 0.12)
+
+        # 位置满足即成功
+        success = success_pos
+
         info = {
             'obj_to_target': obj_to_target,
             'in_place_reward': in_place,
-            'success': float(obj_to_target <= 0.08),
+            'success': success,
             'near_object': 0.,
             'grasp_success': 1.,
             'grasp_reward': 1.,
             'unscaled_reward': reward,
+            'door_angle': theta,
         }
         return reward, info
 

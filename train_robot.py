@@ -691,71 +691,72 @@ def main(args):
                 if accelerator.is_main_process:
                     logger.info("start evaluating model")
                     model.eval()
-                    input_img = eval_batch['input_img']
-                    target_img = eval_batch['future_img']
-                    input_depth = eval_batch['input_depth']
-                    target_depth = eval_batch['future_depth']
-                    rela_action = eval_batch['rela_action']
-                    action_cond_b = eval_batch['action_cond']
-                    force_cond_b = eval_batch.get('force_cond')
-                    y_b = eval_batch['y']
+                    with torch.no_grad():
+                        input_img = eval_batch['input_img']
+                        target_img = eval_batch['future_img']
+                        input_depth = eval_batch['input_depth']
+                        target_depth = eval_batch['future_depth']
+                        rela_action = eval_batch['rela_action']
+                        action_cond_b = eval_batch['action_cond']
+                        force_cond_b = eval_batch.get('force_cond')
+                        y_b = eval_batch['y']
 
-                    z = torch.randn(size=target_img.shape, device=device)
-                    noise_depth = torch.randn(size=target_depth.shape, device=device) if args.use_depth else None
-                    noise_action = torch.randn(size=rela_action.shape, device=device) if args.action_steps > 0 else None
+                        z = torch.randn(size=target_img.shape, device=device)
+                        noise_depth = torch.randn(size=target_depth.shape, device=device) if args.use_depth else None
+                        noise_action = torch.randn(size=rela_action.shape, device=device) if args.action_steps > 0 else None
 
-                    eval_model_kwargs = dict(
-                        y=y_b,
-                        x_cond=input_img
-                    )
-                    if args.use_depth:
-                        eval_model_kwargs['depth_cond'] = input_depth
-                    if noise_action is not None:
-                        eval_model_kwargs['noised_action'] = noise_action
-                    if noise_depth is not None:
-                        eval_model_kwargs['noised_depth'] = noise_depth
-                    if action_cond_b is not None:
-                        eval_model_kwargs['action_cond'] = action_cond_b
-                    # 只在 force_cond 非 None 时传入
-                    if force_cond_b is not None and torch.is_tensor(force_cond_b):
-                        eval_model_kwargs['force_cond'] = force_cond_b
-                    elif getattr(args, "use_force", False):
-                        # use_force=True 但数据为 None，传零张量
-                        eval_model_kwargs['force_cond'] = torch.zeros(input_img.shape[0], 1, args.force_dim, device=device)
-                    samples = eval_diffusion.p_sample_loop(
-                        model, z.shape, z, clip_denoised=False, model_kwargs=eval_model_kwargs, progress=True,
-                        device=device
-                    )
-                    if args.use_depth or args.action_steps > 0:
-                        img_samples, action_samples, depth_samples = samples
-                    else:
-                        img_samples = samples
-                        action_samples = None
-                        depth_samples = None
+                        eval_model_kwargs = dict(
+                            y=y_b,
+                            x_cond=input_img
+                        )
+                        if args.use_depth:
+                            eval_model_kwargs['depth_cond'] = input_depth
+                        if noise_action is not None:
+                            eval_model_kwargs['noised_action'] = noise_action
+                        if noise_depth is not None:
+                            eval_model_kwargs['noised_depth'] = noise_depth
+                        if action_cond_b is not None:
+                            eval_model_kwargs['action_cond'] = action_cond_b
+                        # 只在 force_cond 非 None 时传入
+                        if force_cond_b is not None and torch.is_tensor(force_cond_b):
+                            eval_model_kwargs['force_cond'] = force_cond_b
+                        elif getattr(args, "use_force", False):
+                            # use_force=True 但数据为 None，传零张量
+                            eval_model_kwargs['force_cond'] = torch.zeros(input_img.shape[0], 1, args.force_dim, device=device)
+                        samples = eval_diffusion.p_sample_loop(
+                            model, z.shape, z, clip_denoised=False, model_kwargs=eval_model_kwargs, progress=True,
+                            device=device
+                        )
+                        if args.use_depth or args.action_steps > 0:
+                            img_samples, action_samples, depth_samples = samples
+                        else:
+                            img_samples = samples
+                            action_samples = None
+                            depth_samples = None
 
-                    img_mse_error = torch.nn.functional.mse_loss(target_img, img_samples)
-                    img_mse_value = img_mse_error.detach().item()
-                    logger.info(f"(step={train_steps:07d}) Train img mse: {img_mse_value:.6f}")
+                        img_mse_error = torch.nn.functional.mse_loss(target_img, img_samples)
+                        img_mse_value = img_mse_error.detach().item()
+                        logger.info(f"(step={train_steps:07d}) Train img mse: {img_mse_value:.6f}")
 
-                    if args.use_depth and depth_samples is not None:
-                        depth_mse_error = torch.nn.functional.mse_loss(target_depth, depth_samples)
-                        depth_mse_value = depth_mse_error.detach().item()
-                        logger.info(f"(step={train_steps:07d}) Train depth mse: {depth_mse_value:.6f}")
-                    else:
-                        depth_mse_value = None
+                        if args.use_depth and depth_samples is not None:
+                            depth_mse_error = torch.nn.functional.mse_loss(target_depth, depth_samples)
+                            depth_mse_value = depth_mse_error.detach().item()
+                            logger.info(f"(step={train_steps:07d}) Train depth mse: {depth_mse_value:.6f}")
+                        else:
+                            depth_mse_value = None
 
-                    if args.action_steps > 0 and action_samples is not None:
-                        action_mse_error = torch.nn.functional.mse_loss(rela_action, action_samples)
-                        action_mse_value = action_mse_error.detach().item()
-                        logger.info(f"(step={train_steps:07d}) Train action mse: {action_mse_value:.6f}")
-                        if action_mse_value < best_action_loss:
-                            best_action_loss = action_mse_value
-                            checkpoint_path = f"{checkpoint_dir}/best_action_loss.pt"
-                            torch.save({
-                                "model": model.module.state_dict() if accelerator.num_processes > 1 else model.state_dict(),
-                                "args": args
-                            }, checkpoint_path)
-                            logger.info(f"Saved checkpoint to {checkpoint_path}")
+                        if args.action_steps > 0 and action_samples is not None:
+                            action_mse_error = torch.nn.functional.mse_loss(rela_action, action_samples)
+                            action_mse_value = action_mse_error.detach().item()
+                            logger.info(f"(step={train_steps:07d}) Train action mse: {action_mse_value:.6f}")
+                            if action_mse_value < best_action_loss:
+                                best_action_loss = action_mse_value
+                                checkpoint_path = f"{checkpoint_dir}/best_action_loss.pt"
+                                torch.save({
+                                    "model": model.module.state_dict() if accelerator.num_processes > 1 else model.state_dict(),
+                                    "args": args
+                                }, checkpoint_path)
+                                logger.info(f"Saved checkpoint to {checkpoint_path}")
                     else:
                         action_mse_value = None
 

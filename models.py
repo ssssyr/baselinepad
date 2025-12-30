@@ -51,7 +51,10 @@ class Attention(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
-        self.attn_mask = attn_mask
+        if attn_mask is not None:
+            self.register_buffer("attn_mask", attn_mask, persistent=False)
+        else:
+            self.attn_mask = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, C = x.shape
@@ -60,12 +63,13 @@ class Attention(nn.Module):
         q, k = self.q_norm(q), self.k_norm(k)
 
         if self.fused_attn:
-            if self.attn_mask is not None:
-                self.attn_mask = self.attn_mask.to(x.device)
+            attn_mask = self.attn_mask
+            if attn_mask is not None and attn_mask.device != x.device:
+                attn_mask = attn_mask.to(x.device)
             x = F.scaled_dot_product_attention(
                 q, k, v,
                 dropout_p=self.attn_drop.p if self.training else 0.,
-                attn_mask=self.attn_mask
+                attn_mask=attn_mask
             )
         else:
             q = q * self.scale

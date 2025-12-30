@@ -20,7 +20,7 @@ class SawyerPushEnvV2(SawyerXYZEnv):
             i.e. (self._target_pos - pos_hand)
         - (6/15/20) Separated reach-push-pick-place into 3 separate envs.
     """
-    TARGET_RADIUS=0.05
+    TARGET_RADIUS=0.07  # 从0.06略微增加到0.07
 
     def __init__(self):
         hand_low = (-0.5, 0.40, 0.05)

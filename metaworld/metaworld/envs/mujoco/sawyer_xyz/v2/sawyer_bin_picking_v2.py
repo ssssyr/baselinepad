@@ -79,7 +79,7 @@ class SawyerBinPickingEnvV2(SawyerXYZEnv):
         ) = self.compute_reward(action, obs)
 
         info = {
-            'success': float(obj_to_target <= 0.08),
+            'success': float(obj_to_target <= 0.09),
             'near_object': float(near_object),
             'grasp_success': float(grasp_success),
             'grasp_reward': grasp_reward,

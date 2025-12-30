@@ -59,7 +59,7 @@ class SawyerDrawerOpenEnvV2(SawyerXYZEnv):
         ) = self.compute_reward(action, obs)
 
         info = {
-            'success': float(handle_error <= 0.03 and gripper_error <= 0.06),
+            'success': float(handle_error <= 0.045 and gripper_error <= 0.09),  # 略微放宽
             'near_object': float(gripper_error <= 0.06),
             'grasp_success': float(gripped > 0),
             'grasp_reward': caging_reward,

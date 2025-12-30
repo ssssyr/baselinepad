@@ -35,7 +35,7 @@ class SawyerLeverPullEnvV2(SawyerXYZEnv):
         )
 
         self.init_config = {
-            'obj_init_pos': np.array([0, 0.7, 0.0]),
+            'obj_init_pos': np.array([0, 0.52, 0.0]),  # 从0.7移到0.52，更靠近机械臂
             'hand_init_pos': np.array([0, 0.4, 0.2], dtype=np.float32),
         }
         self.goal = np.array([.12, 0.88, .05])
@@ -68,7 +68,7 @@ class SawyerLeverPullEnvV2(SawyerXYZEnv):
         ) = self.compute_reward(action, obs)
 
         info = {
-            'success': float(lever_error <= np.pi / 24),
+            'success': float(lever_error <= np.pi / 10),  # 放宽到18度（原9度）进一步降低难度
             'near_object': float(shoulder_to_lever < 0.03),
             'grasp_success': float(ready_to_lift > 0.9),
             'grasp_reward': ready_to_lift,

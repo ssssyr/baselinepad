@@ -56,7 +56,9 @@ class SawyerDoorEnvV2(SawyerXYZEnv):
             reward_success,
         ) = self.compute_reward(action, obs)
 
-        success = float(abs(obs[4] - self._target_pos[0]) <= 0.08)
+        theta = self.data.get_joint_qpos('doorjoint')
+        # Success based on door angle: door needs to rotate to at least -30 degrees (-0.52 radians)
+        success = float(theta <= -0.52)  # -30 degrees
 
         info = {
             'success': success,
@@ -66,6 +68,7 @@ class SawyerDoorEnvV2(SawyerXYZEnv):
             'in_place_reward': reward_success,
             'obj_to_target': 0,
             'unscaled_reward': reward,
+            'door_angle': theta,  # Add door angle for debugging
         }
 
         return reward, info
@@ -161,8 +164,8 @@ class SawyerDoorEnvV2(SawyerXYZEnv):
             8.0 * reward_steps[1],
         ))
 
-        # Override reward on success flag
-        if abs(obs[4] - self._target_pos[0]) <= 0.08:
+        # Override reward on success based on door angle (very relaxed to -30 degrees)
+        if theta <= -0.52:  # -30 degrees = -0.52 radians (very relaxed)
             reward = 10.0
 
         return (

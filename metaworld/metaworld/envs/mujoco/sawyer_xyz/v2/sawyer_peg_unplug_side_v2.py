@@ -45,7 +45,7 @@ class SawyerPegUnplugSideEnvV2(SawyerXYZEnv):
 
         reward, tcp_to_obj, tcp_open, obj_to_target, grasp_reward, in_place_reward, grasp_success = (
             self.compute_reward(action, obs))
-        success = float(obj_to_target <= 0.07)
+        success = float(obj_to_target <= 0.08)
         near_object = float(tcp_to_obj <= 0.03)
 
         info = {

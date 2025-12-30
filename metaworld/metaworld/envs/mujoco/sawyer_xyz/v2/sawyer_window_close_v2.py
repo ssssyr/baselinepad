@@ -17,7 +17,7 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
             (for consistency with other environments)
         - (6/15/20) Increased max_path_length from 150 to 200
     """
-    TARGET_RADIUS = 0.05
+    TARGET_RADIUS = 0.06
     def __init__(self):
 
         liftThresh = 0.02

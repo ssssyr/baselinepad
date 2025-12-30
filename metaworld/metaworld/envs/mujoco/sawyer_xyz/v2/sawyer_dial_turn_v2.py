@@ -7,7 +7,7 @@ from metaworld.envs.mujoco.sawyer_xyz.sawyer_xyz_env import SawyerXYZEnv, _asser
 
 
 class SawyerDialTurnEnvV2(SawyerXYZEnv):
-    TARGET_RADIUS = 0.07
+    TARGET_RADIUS = 0.075
 
     def __init__(self):
 

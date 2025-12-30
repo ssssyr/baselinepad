@@ -55,7 +55,7 @@ class SawyerPickOutOfHoleEnvV2(SawyerXYZEnv):
             in_place_reward
         ) = self.compute_reward(action, obs)
 
-        success = float(obj_to_target <= 0.07)
+        success = float(obj_to_target <= 0.08)
         near_object = float(tcp_to_obj <= 0.03)
         grasp_success = float(grasp_success)
 

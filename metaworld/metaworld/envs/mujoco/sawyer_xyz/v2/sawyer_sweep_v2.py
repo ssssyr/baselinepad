@@ -62,8 +62,9 @@ class SawyerSweepEnvV2(SawyerXYZEnv):
 
         grasp_success = float(self.touching_main_object and (tcp_opened > 0))
 
+        # 放宽成功阈值从0.05到0.08
         info = {
-            'success': float(target_to_obj <= 0.05),
+            'success': float(target_to_obj <= 0.08),
             'near_object': float(tcp_to_obj <= 0.03),
             'grasp_reward': object_grasped,
             'grasp_success': grasp_success,

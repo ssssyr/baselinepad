@@ -63,15 +63,19 @@ class MoEGate(nn.Module):
             if flat_modality.numel() == flat_states.shape[0]:
                 bias = self.modality_bias.to(hidden_states.device)
                 logits = logits + bias[flat_modality]
+        scores = None
         if self.scoring_func == "softmax":
-            scores = logits.softmax(dim=-1)
+            if (not self.training) and self.norm_topk_prob:
+                topk_logits, topk_idx = torch.topk(logits, k=self.top_k, dim=-1, sorted=False)
+                topk_weight = topk_logits.softmax(dim=-1)
+            else:
+                scores = logits.softmax(dim=-1)
+                topk_weight, topk_idx = torch.topk(scores, k=self.top_k, dim=-1, sorted=False)
+                if self.top_k > 1 and self.norm_topk_prob:
+                    denominator = topk_weight.sum(dim=-1, keepdim=True) + 1e-20
+                    topk_weight = topk_weight / denominator
         else:
             raise NotImplementedError(f"Unsupported MoE scoring function: {self.scoring_func}")
-
-        topk_weight, topk_idx = torch.topk(scores, k=self.top_k, dim=-1, sorted=False)
-        if self.top_k > 1 and self.norm_topk_prob:
-            denominator = topk_weight.sum(dim=-1, keepdim=True) + 1e-20
-            topk_weight = topk_weight / denominator
 
         aux_loss: Optional[torch.Tensor] = None
         if self.training and self.alpha > 0.0:

@@ -151,6 +151,8 @@ class DiffusionAgent():
         self.model.load_state_dict(state_dict)
         self.model.to(self.device)
         self.model.eval()
+        if getattr(self.args, "ckpt_wrapper", False):
+            self.args.ckpt_wrapper = False
 
         self.force_mean, self.force_std = load_force_stats(self.args)
 
@@ -251,20 +253,21 @@ class DiffusionAgent():
             "action_cond": action_cond,
             "force_cond": force_cond,
         }
-        if self.args.action_steps ==0 and not self.args.use_depth:
-            samples = self.diffusion.p_sample_loop(
-            sample_fn, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=False, device=self.device
-        )
-            samples_a = None
-            sample_depth = None
-        else:
-            samples, samples_a, sample_depth = self.diffusion.p_sample_loop(
-            sample_fn, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=False, device=self.device
-        )
-            if samples_a is not None:
-                samples_a = samples_a.detach().cpu().numpy()
-            if sample_depth is not None:
-                sample_depth = sample_depth.detach().cpu().numpy()
+        with torch.no_grad():
+            if self.args.action_steps ==0 and not self.args.use_depth:
+                samples = self.diffusion.p_sample_loop(
+                sample_fn, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=False, device=self.device
+            )
+                samples_a = None
+                sample_depth = None
+            else:
+                samples, samples_a, sample_depth = self.diffusion.p_sample_loop(
+                sample_fn, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=False, device=self.device
+            )
+                if samples_a is not None:
+                    samples_a = samples_a.detach().cpu().numpy()
+                if sample_depth is not None:
+                    sample_depth = sample_depth.detach().cpu().numpy()
 
         # 添加结果调试信息
         if samples_a is not None:

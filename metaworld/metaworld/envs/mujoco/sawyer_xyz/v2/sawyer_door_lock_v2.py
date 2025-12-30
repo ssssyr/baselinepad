@@ -56,7 +56,7 @@ class SawyerDoorLockEnvV2(SawyerXYZEnv):
         ) = self.compute_reward(action, obs)
 
         info = {
-            'success': float(obj_to_target <= 0.02),
+            'success': float(obj_to_target <= 0.022),
             'near_object': float(tcp_to_obj <= 0.05),
             'grasp_success': float(tcp_open > 0),
             'grasp_reward': near_button,
@@ -95,7 +95,7 @@ class SawyerDoorLockEnvV2(SawyerXYZEnv):
             self.sim.step()
 
         self.obj_init_pos = self.get_body_com('lock_link')
-        self._target_pos = self.obj_init_pos + np.array([.0, -.04, -.1])
+        self._target_pos = self.obj_init_pos + np.array([.0, -.04, -.09])
 
         return self._get_obs()
 

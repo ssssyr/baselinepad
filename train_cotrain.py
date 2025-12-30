@@ -405,54 +405,55 @@ def main(args):
                 if accelerator.is_main_process:
                     logger.info("start evaluating model")
                     model.eval()
-                    input_img = eval_batch['input_img']
-                    target_img = eval_batch['future_img']
-                    input_depth = eval_batch['input_depth']
-                    target_depth = eval_batch['future_depth']
-                    rela_action = eval_batch['rela_action']
-                    action_cond = eval_batch['action_cond']
-                    force_cond = eval_batch.get('force_cond')
-                    y = eval_batch['y']
-                    loss_mask = eval_batch['loss_mask']
-                    #target_action = eval_batch['a']
-                    z = torch.randn(size=target_img.shape, device=device)
-                    noise_depth = torch.randn(size=target_depth.shape, device=device)
-                    noise_action = torch.randn(size=rela_action.shape, device=device)
-                    #noise_action = torch.randn(input_img.shape[0], 4, args.action_lens, device=device)
-                    eval_model_kwargs = dict(y=y, x_cond=input_img,depth_cond=input_depth)
-                    if args.use_depth:
-                        eval_model_kwargs['noised_depth'] = noise_depth
-                    if args.action_steps > 0:
-                        eval_model_kwargs['noised_action'] = noise_action
-                    if args.action_steps > 0 and args.action_condition:
-                        eval_model_kwargs['action_cond'] = action_cond
-                    # 只在 force_cond 非 None 时传入
-                    if force_cond is not None and torch.is_tensor(force_cond):
-                        eval_model_kwargs['force_cond'] = force_cond
-                    elif getattr(args, "use_force", False):
-                        # use_force=True 但数据为 None，传零张量
-                        eval_model_kwargs['force_cond'] = torch.zeros(input_img.shape[0], 1, args.force_dim, device=device)
-                    samples = eval_diffusion.p_sample_loop(
-                        model, z.shape, z, clip_denoised=False, model_kwargs=eval_model_kwargs, progress=True,
-                        device=device
-                    )
-                    if args.use_depth or args.action_steps>0:
-                        img_samples, action_samples, depth_samples =samples
-                    else:
-                        img_samples = samples
-                    img_mse_error = torch.nn.functional.mse_loss(target_img, img_samples)
-                    img_mse_value = img_mse_error.detach().item()
-                    logger.info(f"(step={train_steps:07d}) Train img mse: {img_mse_value:.6f}")
-                    if args.use_depth:
-                        depth_mse_error = torch.nn.functional.mse_loss(target_depth, depth_samples)
-                        depth_mse_value = depth_mse_error.detach().item()
-                        logger.info(f"(step={train_steps:07d}) Train depth mse: {depth_mse_value:.6f}")
-                    else:
-                        depth_mse_value = None
-                    if args.action_steps>0:
-                        print("action_samples",action_samples.shape,"action_gt",rela_action.shape, "loss_mask", loss_mask.shape)
-                        action_mse_error = ((rela_action-action_samples)**2*loss_mask.unsqueeze(1).unsqueeze(1)).mean()
-                        action_mse_value = action_mse_error.detach().item()
+                    with torch.no_grad():
+                        input_img = eval_batch['input_img']
+                        target_img = eval_batch['future_img']
+                        input_depth = eval_batch['input_depth']
+                        target_depth = eval_batch['future_depth']
+                        rela_action = eval_batch['rela_action']
+                        action_cond = eval_batch['action_cond']
+                        force_cond = eval_batch.get('force_cond')
+                        y = eval_batch['y']
+                        loss_mask = eval_batch['loss_mask']
+                        #target_action = eval_batch['a']
+                        z = torch.randn(size=target_img.shape, device=device)
+                        noise_depth = torch.randn(size=target_depth.shape, device=device)
+                        noise_action = torch.randn(size=rela_action.shape, device=device)
+                        #noise_action = torch.randn(input_img.shape[0], 4, args.action_lens, device=device)
+                        eval_model_kwargs = dict(y=y, x_cond=input_img,depth_cond=input_depth)
+                        if args.use_depth:
+                            eval_model_kwargs['noised_depth'] = noise_depth
+                        if args.action_steps > 0:
+                            eval_model_kwargs['noised_action'] = noise_action
+                        if args.action_steps > 0 and args.action_condition:
+                            eval_model_kwargs['action_cond'] = action_cond
+                        # 只在 force_cond 非 None 时传入
+                        if force_cond is not None and torch.is_tensor(force_cond):
+                            eval_model_kwargs['force_cond'] = force_cond
+                        elif getattr(args, "use_force", False):
+                            # use_force=True 但数据为 None，传零张量
+                            eval_model_kwargs['force_cond'] = torch.zeros(input_img.shape[0], 1, args.force_dim, device=device)
+                        samples = eval_diffusion.p_sample_loop(
+                            model, z.shape, z, clip_denoised=False, model_kwargs=eval_model_kwargs, progress=True,
+                            device=device
+                        )
+                        if args.use_depth or args.action_steps>0:
+                            img_samples, action_samples, depth_samples =samples
+                        else:
+                            img_samples = samples
+                        img_mse_error = torch.nn.functional.mse_loss(target_img, img_samples)
+                        img_mse_value = img_mse_error.detach().item()
+                        logger.info(f"(step={train_steps:07d}) Train img mse: {img_mse_value:.6f}")
+                        if args.use_depth:
+                            depth_mse_error = torch.nn.functional.mse_loss(target_depth, depth_samples)
+                            depth_mse_value = depth_mse_error.detach().item()
+                            logger.info(f"(step={train_steps:07d}) Train depth mse: {depth_mse_value:.6f}")
+                        else:
+                            depth_mse_value = None
+                        if args.action_steps>0:
+                            print("action_samples",action_samples.shape,"action_gt",rela_action.shape, "loss_mask", loss_mask.shape)
+                            action_mse_error = ((rela_action-action_samples)**2*loss_mask.unsqueeze(1).unsqueeze(1)).mean()
+                            action_mse_value = action_mse_error.detach().item()
                         logger.info(f"(step={train_steps:07d}) Train action mse: {action_mse_value:.6f}")
                         if action_mse_value < best_action_loss:
                             best_action_loss = action_mse_value

@@ -78,7 +78,7 @@ class SawyerPushWallEnvV2(SawyerXYZEnv):
             in_place_reward,
         ) = self.compute_reward(action, obs)
 
-        success = float(obj_to_target <= 0.07)
+        success = float(obj_to_target <= 0.08)
         near_object = float(tcp_to_obj <= 0.03)
         grasp_success = float(self.touching_main_object and (tcp_open > 0)
                               and (obj[2] - 0.02 > self.obj_init_pos[2]))

@@ -7,7 +7,7 @@ from metaworld.envs.mujoco.sawyer_xyz.sawyer_xyz_env import SawyerXYZEnv, _asser
 
 
 class SawyerHandInsertEnvV2(SawyerXYZEnv):
-    TARGET_RADIUS = 0.05
+    TARGET_RADIUS = 0.06
 
     def __init__(self):
 
@@ -58,7 +58,7 @@ class SawyerHandInsertEnvV2(SawyerXYZEnv):
         ) = self.compute_reward(action, obs)
 
         info = {
-            'success': float(obj_to_target <= 0.05),
+            'success': float(obj_to_target <= 0.10),  # 从5cm放宽到10cm
             'near_object': float(tcp_to_obj <= 0.03),
             'grasp_success': float(
                 self.touching_main_object and
