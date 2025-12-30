@@ -757,8 +757,8 @@ def main(args):
                                     "args": args
                                 }, checkpoint_path)
                                 logger.info(f"Saved checkpoint to {checkpoint_path}")
-                    else:
-                        action_mse_value = None
+                        else:
+                            action_mse_value = None
 
                     if args.use_wandb:
                         import wandb

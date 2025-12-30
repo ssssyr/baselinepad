@@ -21,6 +21,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from scipy.spatial.transform import Rotation
+from scipy.signal import savgol_filter
 
 # 让 mujoco-py 离屏渲染
 os.environ.setdefault("MUJOCO_GL", "egl")
@@ -238,6 +239,76 @@ def get_ee_force_torque(env) -> np.ndarray:
     torque_ee = R_world_to_ee @ torque_world
 
     return np.concatenate([force_ee, torque_ee])  # [fx, fy, fz, tx, ty, tz]
+
+
+# ==================== 力信号滤波器 ====================
+
+class ForceFilter:
+    """
+    力信号滤波器，平滑异常峰值
+
+    问题: MetaWorld 仿真中的接触力计算会产生瞬间巨大的接触力峰值
+    解决: 使用 Savitzky-Golay 滤波器平滑力信号，并截断极端值
+    """
+
+    def __init__(
+        self,
+        window_size: int = 5,
+        polyorder: int = 2,
+        clip_force: float = 20.0,     # 力截断阈值 (牛顿)
+        clip_torque: float = 2.0      # 力矩截断阈值 (牛·米)
+    ):
+        """
+        Args:
+            window_size: SG 滤波窗口大小（奇数，>= polyorder+1）
+            polyorder: SG 滤波多项式阶数
+            clip_force: 力截断阈值，超过此值的信号将被截断
+            clip_torque: 力矩截断阈值
+        """
+        self.window_size = window_size
+        self.polyorder = polyorder
+        self.clip_force = clip_force
+        self.clip_torque = clip_torque
+        self.history = []  # 存储历史力信号
+
+    def filter(self, force: np.ndarray) -> np.ndarray:
+        """
+        对新的力信号进行滤波
+
+        Args:
+            force: 原始力信号 [fx, fy, fz, tx, ty, tz]
+
+        Returns:
+            滤波后的力信号
+        """
+        force = np.array(force, dtype=np.float32)
+
+        # 1. 先截断极端值（防止 SG 滤波器被异常值污染）
+        force[:3] = np.clip(force[:3], -self.clip_force, self.clip_force)  # fx, fy, fz
+        force[3:] = np.clip(force[3:], -self.clip_torque, self.clip_torque)  # tx, ty, tz
+
+        # 2. 添加到历史
+        self.history.append(force.copy())
+
+        # 3. 使用 Savitzky-Golay 滤波器平滑（需要足够的窗口数据）
+        if len(self.history) >= self.window_size:
+            recent = np.array(self.history[-self.window_size:])
+            for i in range(6):
+                # 对每个维度分别应用 SG 滤波
+                filtered = savgol_filter(
+                    recent[:, i],
+                    self.window_size,
+                    self.polyorder
+                )
+                # 只更新最新值，保持历史一致性
+                self.history[-1][i] = filtered[-1]
+
+        return self.history[-1]
+
+    def reset(self):
+        """重置滤波器状态"""
+        self.history = []
+
 
 def collect_one_trajectory(
     env,

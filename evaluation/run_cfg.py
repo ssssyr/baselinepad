@@ -5,12 +5,12 @@ META_CONFIG = {
     'thirdview_camera': 'corner3',
     'firstview_camera': 'gripperPOV',
     'use_depth': False, # whether to use depth
-    'rollout_num': 10, # number of rollouts for each tasks
+    'rollout_num': 15, # number of rollouts for each tasks
     'max_steps': 35, # max planning steps for each rollout
     'video_dir': "output",
     'visualize_prediction': True,
     'denoise_steps': 16, # joint denoise step
-    'task_list': ['pick-out-of-hole-v2'], # 成功率低于50%的任务 
+    #'task_list': ['pick-out-of-hole-v2'], # 成功率低于50%的任务 
     'random_seed': 42, # 固定随机种子，设为None则每次随机
     'gpu_id': 0
 }

@@ -6,7 +6,7 @@
 # ======================================================
 training:
   # Paths
-  feature_path: "/home/ct_24210860031/812datasets/SYR/metaworld_corner3_all_with_force_features"  # Path to MetaWorld data
+  feature_path: "/home/ct_24210860031/812datasets/SYR/converted"  # Path to MetaWorld data
   video_path: null
   results_dir: "results_metaworld_4d"
 
