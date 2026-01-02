@@ -8,7 +8,7 @@ from metaworld.envs.mujoco.sawyer_xyz.sawyer_xyz_env import SawyerXYZEnv, _asser
 
 class SawyerBasketballEnvV2(SawyerXYZEnv):
     PAD_SUCCESS_MARGIN = 0.06
-    TARGET_RADIUS = 0.1
+    TARGET_RADIUS = 0.15  # 从0.1增加到0.15，降低难度
 
     def __init__(self):
 

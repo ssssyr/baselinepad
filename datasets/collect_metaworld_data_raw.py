@@ -143,6 +143,15 @@ CAMERA_NAME = "corner3"                 # ['corner','corner2','corner3','corner4
 IMAGE_RESOLUTION = (256, 256)           # (H, W)
 OUTPUT_DIR = Path("/mnt/sda/datasets/metaworld_corner3_all_with_force")  # 输出根目录（所有50个任务，带力信号）
 
+# ==================== 力信号滤波器配置 ====================
+# 力信号滤波参数，用于平滑 MetaWorld 仿真中的接触力峰值
+FORCE_FILTER_WINDOW_SIZE = 5          # SG 滤波窗口大小（奇数，>= polyorder+1）
+FORCE_FILTER_POLYORDER = 2             # SG 滤波多项式阶数
+FORCE_FILTER_CLIP_FORCE = 20.0         # 力截断阈值 (牛顿)，超过此值的信号将被截断
+FORCE_FILTER_CLIP_TORQUE = 2.0         # 力矩截断阈值 (牛·米)
+# 说明：MetaWorld 轻物任务的正常接触力通常在 ±5N 范围内，
+#       但仿真中的碰撞会产生 100N+ 的异常峰值，需要滤波处理
+
 # 任务名 -> 专家策略（包含所有50个任务）
 POLICY_MAPPING = {
     "assembly-v2": SawyerAssemblyV2Policy,
@@ -317,12 +326,16 @@ def collect_one_trajectory(
     task_dir: Path,
     image_resolution: Tuple[int, int],
     camera_name: str,
+    force_filter: ForceFilter = None,
 ) -> Tuple[bool, int, List[List[float]], List[List[float]]]:
     """
     采集一条轨迹：保存 PNG 帧，并返回 (success, num_steps, states, forces)
       - states: 每步 4 维绝对状态 [x,y,z,grip]（从 obs[:4] 取）
-      - forces: 每步 6 维 EE 坐标系力 [fx,fy,fz,tx,ty,tz]
+      - forces: 每步 6 维 EE 坐标系力 [fx,fy,fz,tx,ty,tz]（经过滤波）
     目录结构：task_dir / f"class_{traj_idx:06d}"/ frame_0000.png, ...
+
+    Args:
+        force_filter: 力信号滤波器，如果为 None 则创建默认滤波器
     """
     traj_dir = task_dir / f"class_{traj_idx:06d}"
     traj_dir.mkdir(parents=True, exist_ok=True)
@@ -332,6 +345,12 @@ def collect_one_trajectory(
 
     H, W = image_resolution
     max_len = int(getattr(env, "max_path_length", 500))
+
+    # 创建力信号滤波器（如果未提供）
+    if force_filter is None:
+        force_filter = ForceFilter(window_size=5, polyorder=2, clip_force=20.0, clip_torque=2.0)
+    else:
+        force_filter.reset()
 
     states: List[List[float]] = []
     forces: List[List[float]] = []
@@ -343,8 +362,10 @@ def collect_one_trajectory(
         # 绝对状态（世界系）
         states.append((obs[:4]).tolist())  # [x, y, z, grip]
 
-        # 获取EE坐标系下的六维力（单独存储）
-        forces.append(get_ee_force_torque(env).tolist())  # [fx, fy, fz, tx, ty, tz]
+        # 获取EE坐标系下的六维力，经过滤波
+        raw_force = get_ee_force_torque(env)  # [fx, fy, fz, tx, ty, tz]
+        filtered_force = force_filter.filter(raw_force)  # 滤波处理
+        forces.append(filtered_force.tolist())
 
         # 与环境交互：使用专家策略动作（不保存动作）
         action = policy.get_action(obs)
@@ -356,9 +377,10 @@ def collect_one_trajectory(
     return (int(info_last.get("success", 0)) == 1), len(states), states, forces
 
 def main():
-    print("=== Meta-World v2 全部任务数据采集（带力信号）===")
+    print("=== Meta-World v2 全部任务数据采集（带力信号滤波）===")
     print(f"输出目录: {OUTPUT_DIR.resolve()}")
     print(f"相机: {CAMERA_NAME}, 分辨率: {IMAGE_RESOLUTION}, 每任务轨迹数: {NUM_TRAJECTORIES_PER_TASK}")
+    print(f"力滤波: SG窗口={FORCE_FILTER_WINDOW_SIZE}, 截断={FORCE_FILTER_CLIP_FORCE}N/{FORCE_FILTER_CLIP_TORQUE}Nm")
     print(f"任务总数: {len(TASKS_TO_COLLECT)}\n")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -386,6 +408,14 @@ def main():
         task_dir = OUTPUT_DIR / task_name
         task_dir.mkdir(parents=True, exist_ok=True)
 
+        # 创建力信号滤波器
+        force_filter = ForceFilter(
+            window_size=FORCE_FILTER_WINDOW_SIZE,
+            polyorder=FORCE_FILTER_POLYORDER,
+            clip_force=FORCE_FILTER_CLIP_FORCE,
+            clip_torque=FORCE_FILTER_CLIP_TORQUE
+        )
+
         dataset_info: List[dict] = []
         saved, attempt = 0, 0
         pbar = tqdm(total=NUM_TRAJECTORIES_PER_TASK, desc=f"Collecting {task_name}", ncols=100)
@@ -398,6 +428,7 @@ def main():
                     task_dir=task_dir,
                     image_resolution=IMAGE_RESOLUTION,
                     camera_name=CAMERA_NAME,
+                    force_filter=force_filter,
                 )
 
                 traj_entry = {

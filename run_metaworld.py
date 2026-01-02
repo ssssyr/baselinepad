@@ -312,14 +312,14 @@ def run_single_rollout(agent, task, selected_id, traj_idx, META_CONFIG, INSTRUCT
                     predict_img = agent.decode_rgb(img, samples)
                 predict_img = add_bound(predict_img)
 
-            # Select target action (same as your original logic)
+            # Select target action (use 2nd frame of predicted sequence)
             if getattr(agent.args, "action_steps", 0) > 0 and sample_a is not None:
                 a_seq = sample_a.reshape(agent.args.action_steps, agent.args.action_dim)
                 if save_video:
                     print(f"🧭 Full predicted action seq (xyzg per step):\n{np.array2string(a_seq, precision=3, floatmode='fixed')}")
                     print(f"🧭 Gripper seq: {np.array2string(a_seq[:,3], precision=3, floatmode='fixed')}, current gripper: {curr_gripper:.3f}")
 
-                target = a_seq[0] / agent.args.action_scale  # Use 2nd frame (index 1) instead of 1st frame
+                target = a_seq[1] / agent.args.action_scale  # Use 2nd frame (index 1)
                 target_xyz, target_gripper = target[:3], float(target[3])
             else:
                 target = sample_a / agent.args.action_scale
