@@ -141,7 +141,7 @@ NUM_TRAJECTORIES_PER_TASK = 50          # 每任务采集轨迹数
 KEEP_ONLY_SUCCESS = False               # 仅保留成功轨迹（会重采直到够数）
 CAMERA_NAME = "corner3"                 # ['corner','corner2','corner3','corner4','topview','behindGripper','gripperPOV']
 IMAGE_RESOLUTION = (256, 256)           # (H, W)
-OUTPUT_DIR = Path("/home/ct_24210860031/812datasets/SYR/coner3withforcenew")  # 输出根目录（所有50个任务，带力信号）
+OUTPUT_DIR = Path("/mnt/sda/datasets/metaworldconer3forcenew")  # 输出根目录（所有50个任务，带力信号）
 
 # ==================== 力信号滤波器配置 ====================
 # 力信号滤波参数，用于平滑 MetaWorld 仿真中的接触力峰值
