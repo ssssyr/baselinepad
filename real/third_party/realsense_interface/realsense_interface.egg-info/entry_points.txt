@@ -1,0 +1,2 @@
+[console_scripts]
+realsense-test = realsense_interface.examples.test_camera:main
