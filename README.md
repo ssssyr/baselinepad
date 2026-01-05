@@ -1,137 +1,594 @@
-# PAD-MoE 扩展迁移路线图（实践版）
+# Prediction with Action (PAD)
 
-## 🍱 与现有 `PAD-MoE_Integration_Plan.md` 的对比
+> 基于 Diffusion Transformer 的视觉策略学习，支持多模态输入（RGB图像、动作、深度、文本、力/力矩）与 Mixture of Experts 架构
 
-| 评价点 | 现有文档表现 | 我的建议 |
-| --- | --- | --- |
-| **阶段拆分** | 阶段 1~4 目标分明，循序渐进 ✅ | 保留整体结构，并在每阶段开始前设置“进入条件”，避免未完成就堆叠新复杂度。 |
-| **监控指标** | 提供了丰富的 WandB 指标与诊断脚本 ✅ | 保留这些监控想法，但先挑选与当前阶段直接相关的指标，防止监控面板噪声过大。 |
-| **技术深度** | 模态专家/对数域融合/自门控覆盖很全 ✅ | 逐步引入，避免“尚未验证基础MoE就进入高级路由”——本文按照“先复刻 DiT-MoE，再按需增强”的顺序排布。 |
-| **执行粒度** | 部分步骤偏概念化（如多模态专家池实现仍待拆解）⚠️ | 为每一步补充“操作+目的+完成标准”，确保落地时可直接勾选。 |
-| **风险控制** | 有通用风险表，但缺少阶段退出机制 ⚠️ | 每阶段附带“进入下一阶段前必须满足的验收标准”和“回退策略”。 |
-
-结论：原文档的宏观思路值得延续（阶段划分、监控意识、自门控方案），本指南做的改动主要是**压实操作步骤、加入阶段网关与回退策略**，以便你可以按 checklist 推进。
+[![NeurIPS 2024](https://img.shields.io/badge/NeurIPS-2024-red)](https://neurips.cc/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue)](https://www.python.org/)
+[![PyTorch 2.5](https://img.shields.io/badge/pytorch-2.5.1-orange)](https://pytorch.org/)
 
 ---
 
-## 🗺️ 总体路线图
+## 目录
 
-| 阶段 | 目标 | 核心交付 | 进入条件 | 退出标准 |
-| --- | --- | --- | --- | --- |
-| 0. 基线复盘 | 梳理代码分支/配置/数据 | `moe` 工作分支、基准指标表 | 无 | 形成 baseline 报告 |
-| 1. 稀疏 MoE 引入 | 复刻 DiT-MoE 的 SparseMoEBlock | `models/moe_blocks.py`、DiTBlock 切换 | 完成阶段 0 | MoE 版本在验证集上不低于基准 -5% |
-| 2. 模态感知路由 | 为不同 token 模态添加偏置/统计 | 模态 mask + 路由日志 | 阶段 1 稳定训练 2 次 | 覆盖率按模态单独设阈值（RGB 高、动作低） |
-| 3. 自门控与对数域融合 | 实现 token 自门控、logit 融合 | 自门控模块 / beta 调度 | 阶段 2 指标达标 | 自门控接受率 70%±15%，loss 稳定 |
-| 4. 训练流程固化 | 配置、脚本、监控、风险预案 | YAML + 脚本 + 监控模版 | 阶段 3 通过 | 可一键切换 dense/MoE 训练 |
-
----
-
-## 🧩 阶段 0：基线与准备
-
-| 操作 | 目的 |
-| --- | --- |
-| 建立 `moe` 或 `feature/moe` 分支，记录当前 commit id | 保证可随时回退到无 MoE 的稳定版本 |
-| 运行一次现有 PAD 训练/评估（小数据即可），记录训练 loss / eval 成绩 / 内存占用 | 形成对比基准，后续每阶段都用同一张表更新 |
-| 整理配置差异表：列出 `args` 中与 MoE 相关的潜在开关（action_steps、use_depth 等） | 后续在配置里加入 `use_moe`、`moe_num_experts` 等参数时可对齐命名 |
-| 复制 `PAD-MoE_Integration_Plan.md` 里已有的监控想法，形成最小化监控清单（例如“专家使用率/aux loss”） | 避免阶段 1 就把仪表盘堆满，提高可读性 |
-
-**进入下一阶段条件：** 有 baseline 报告；明确回退点；决定首个实验配置 (如 `DiT_L_4`, batch=32)。
+- [项目概述](#项目概述)
+- [核心特性](#核心特性)
+- [项目架构](#项目架构)
+- [模型架构详解](#模型架构详解)
+- [安装说明](#安装说明)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [数据准备](#数据准备)
+- [训练](#训练)
+- [评估](#评估)
+- [常见问题](#常见问题)
 
 ---
 
-## 🚀 阶段 1：引入稀疏 MoE（复刻 DiT-MoE）
+## 项目概述
 
-| 操作 | 目的 |
-| --- | --- |
-| 新建 `models/moe_blocks.py`，直接移植 `DiT-MoE/models.py:205-299` 的 `MoEGate + MoeMLP + SparseMoeBlock + AddAuxiliaryLoss` | 以经验证的实现开局，减少自研 Bug 面 |
-| 在 `models.py` 中添加 `class DiTBlockMoE(DiTBlock)`，将 `self.mlp` 替换为 `SparseMoeBlock`，并保留 adaLN/gate 逻辑 | 保持接口兼容，便于在配置里选择 dense 或 MoE block |
-| 调整 `DiT` 构造函数：根据 `args.use_moe` 选择 block 类型，增加 `args.moe_num_experts/args.moe_topk` 等参数 | 让 MoE 可配置可回退 |
-| 在训练/推理脚本中增加 aux loss 汇总（`aux_loss_weight * aux_loss`），并在 log 中记录 `aux_loss` | 控制专家负载、监控训练稳定性 |
-| 编写 `tests/test_moe_block.py`（或最少一个脚本）验证前向/反向、top-k 行为 | 及早发现形状/设备问题 |
+**Prediction with Action (PAD)** 是一个端到端的视觉运动策略学习框架，通过联合去噪过程同时预测未来视觉状态和相应的机器人动作。该方法基于扩散模型和 Diffusion Transformer (DiT)，支持多模态条件输入，并在 MetaWorld 和 BridgeData 等机器人学习基准上取得了优秀性能。
 
-**验证指标：**
-- 验证集性能 ≥ baseline -5%
-- aux loss 收敛且非零
-- 专家使用熵 > 1.0（避免全部落到单专家）
+### 核心思想
 
-**回退策略：** `args.use_moe=False`；删除 `moe_blocks.py` 引用即可恢复。
+传统方法将视觉预测和动作预测分离处理，本项目的创新点在于：
+
+1. **联合预测**: 在同一个扩散过程中同时预测未来帧和动作序列
+2. **多模态融合**: 支持 RGB、深度、力/力矩、文本指令等多种条件输入
+3. **Mixture of Experts**: 使用稀疏专家混合提高模型容量和效率
+4. **时序感知**: Horizon-aware 权重自适应，支持可变长度的未来预测
 
 ---
 
-## 🎯 阶段 2：模态感知路由
+## 核心特性
 
-| 操作 | 目的 |
-| --- | --- |
-| 基于 `args.start_idx/end_idx` 生成 `modality_ids`（RGB=0, Action=1, Depth=2）；在前向中缓存 | 让每个 token 知道自己属于哪一模态 |
-| 在 `MoEGate` 中添加 `self.modality_bias = nn.Parameter(num_modalities, num_experts)`；路由前 `logits += modality_bias[mod_id]` | 轻量地引导专家专注不同模态 |
-| 为每个 batch 统计各模态→专家的分配矩阵，记录 `modality_coverage = (#使用专家)/(num_experts)` | 监控模态专业化程度 |
-| 若 action/depth token 数远少于 RGB，可在 gate 前对这些 token 的 logits 加权（参考 DAE-MoE 的 priority bias 思路） | 防止模态数据量不均导致路由长期忽视某类专家 |
-| WandB 新增图表：`moe/modal_rgb_entropy`、`moe/modal_action_entropy` 等 | 观察模态级别的多样性趋势 |
-
-**验证指标：**
-- RGB 覆盖率 >0.4；动作至少命中 1 个专家（约等于 1/num_experts≈0.125，top-k=2 时可看作 ≥0.25）；Depth 按实际 token 数设中间值（例如 0.2）
-- 模态偏置加入后，Loss 无明显震荡
-- 如果出现某模态完全不用任何专家，及时调高偏置或增加该模态 token 数
-
-**回退策略：** 通过配置关闭 `use_modality_bias`；保留阶段 1 的 MoE 结构继续训练。
+| 特性 | 描述 |
+|------|------|
+| **多模态输入** | RGB图像、动作、深度图、文本指令(CLIP)、6D力/力矩 |
+| **动作预测** | 同时预测未来视觉帧和对应动作序列 |
+| **MoE 架构** | 稀疏专家混合，支持模态感知路由 |
+| **力传感器融合** | 支持接触力/力矩条件输入（6D: fx,fy,fz,tx,ty,tz） |
+| **多环境支持** | MetaWorld、BridgeData、真实机器人数据 |
+| **分布式训练** | 支持多 GPU 加速，云端 A100 训练脚本 |
+| **WandB 集成** | 实验追踪和可视化 |
 
 ---
 
-## 🧠 阶段 3：自门控 + 对数域融合
+## 项目架构
 
-| 操作 | 目的 |
-| --- | --- |
-| 在每个专家 MLP 上添加 `SelfGate`（参考 `DAE-Moe/src/models/moe_modules.py:121-185`），输出 `suitability` ∈ (0,1) | 让专家拥有“拒绝”不擅长 token 的权利 |
-| 在 `MoEGate` 里新增 `beta` 超参及 warmup 逻辑；融合方式 `gate_logits = router_logits + beta * logit(suitability)` | 引入你验证过的对数域加法，避免概率乘法的梯度退化 |
-| 记录 `self_gate_accept_rate`, `expert_rejection_rate`, `beta_schedule`，并监控是否出现全体拒绝或全体接受 | 衡量自门控是否在健康区间 |
-| 若路由后出现 token 无专家接收，给出 fallback（直接复用 `SparseMoeBlock` 中 shared_expert 或 dense MLP） | 确保模型对所有 token 都有输出 |
-| 训练脚本中加入 `beta` warmup（例如 0→0.5，5k steps），防止开局剧烈震荡 | 平滑引入自门控影响 |
-
-**验证指标：**
-- 自门控接受率保持在 60%~85%
-- `beta` 达到上限时，loss 曲线仍稳定
-- 路由熵较阶段 2 略有下降，但无专家坍塌
-
-**回退策略：** 将 `beta=0`，禁用自门控，恢复阶段 2 行为。
-
----
-
-## 🛠️ 阶段 4：训练流程与监控固化
-
-| 操作 | 目的 |
-| --- | --- |
-| 在 `configs/*.yaml` 中补充 `moe` 配置段（示例：`use_moe`, `num_experts`, `top_k`, `modality_bias`, `beta_schedule`） | 让实验切换可溯源、可复现 |
-| 训练脚本加入 CLI 参数和 config merge 逻辑，支持 `--use-moe --moe-config configs/moe/base.yaml` | 简化实验指令 |
-| 建立 WandB 模版面板（训练 loss、aux loss、路由熵、模态覆盖、自门控接受率、GPU 内存） | 复用监控，减少每次人工配置 |
-| 编写 `docs/MoE_troubleshooting.md`：记录常见异常（专家坍塌、OOM、梯度爆炸）及快速检查步骤 | 缩短排障时间 |
-| 每阶段结束打 tag，如 `moe-stage1-ok`；在 README/计划中更新实验状态 | 保持阶段性可追踪 |
-
-**完成标准：**
-- 任意配置可通过 flag 切换 Dense/MoE
-- 监控仪表盘可一键复用
-- 有最新的 troubleshooting 文档与基准表
-
----
-
-## 🧯 风险与回退一览
-
-| 风险 | 触发信号 | 快速处理 |
-| --- | --- | --- |
-| 专家坍塌 | 某专家使用率 >80% | 提高 aux loss、调大 top-k、或减小 lr |
-| 内存飙升 | 显存 > 目标 +2GB | 降低 experts_per_tok、启用 gradient checkpoint |
-| 自门控拒绝全部 token | `accept_rate < 0.2` | 下调 `beta` 或放宽自门控初始化 bias |
-| 模态严重失衡 | 模态覆盖 < 阈值 | 调整 priority bias 或增加该模态 tokens |
+```
+prediction_with_action/
+|
++-- configs/                      # 配置文件目录
+│   +-- metaworld_4d.yaml         # MetaWorld 4-DOF 配置
+│   +-- bridge_vision.yaml        # BridgeData 配置
+│   +-- metaworld_4d_cotrain.yaml # 联合训练配置
+│
++-- datasets/                     # 数据处理模块
+│   +-- dataset.py                # RobotDataset 主数据集类
+│   +-- collect_metaworld_data_raw.py    # MetaWorld 数据采集
+│   +-- convert_real_robot_data.py      # 真实机器人数据转换
+│   +-- extract_features_complete.py     # 特征提取
+│
++-- diffusion/                    # 扩散模型实现
+│   +-- gaussian_diffusion.py     # 高斯扩散过程
+│   +-- resample.py               # 重采样工具
+│
++-- evaluation/                   # 评估模块
+│   +-- agent.py                  # Diffusion Agent
+│   +-- run_cfg.py                # 评估配置
+│
++-- metaworld/                    # MetaWorld 环境集成
+│
++-- mujoco/                       # MuJoCo 仿真器
+│
++-- models.py                     # DiT 核心模型
++-- moe_blocks.py                 # Mixture of Experts 实现
++-- train_robot.py                # 主训练脚本
++-- run_metaworld.py              # MetaWorld 评估脚本
++-- config_loader.py              # 配置加载器
+```
 
 ---
 
-## ✅ 使用建议
+## 模型架构详解
 
-1. **严格按照阶段顺序推进**：每阶段都有进入条件与回退策略，确保问题可定位。
-2. **记录实验表**：将“配置→指标→备注”集中在一个表格，便于比较 dense/MoE 的收益。
-3. **监控先行**：阶段 1 即启用最小监控集，后续只在必要时添加新图表。
-4. **善用对比实验**：同一 batch/seed 下比较 `use_moe=False` 与 `True`，观察差异。
-5. **保持沟通日志**：每完成一个阶段，把结论写入 README 或 docs，方便他人接手。
+### 整体架构图
+
+```
+                    输入层 (多模态融合)
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+    RGB 图像          动作序列          力/力矩
+  (VAE latent)      (action_embed)     (force_embed)
+        │                  │                  │
+        └──────────────────┼──────────────────┘
+                           │
+                    +--------------+
+                    │  Patch Embed │
+                    +--------------+
+                           │
+                    +--------------+
+                    │ Positional   │
+                    │   Embedding  │
+                    +--------------+
+                           │
+        ┌──────────────────┼──────────────────┐
+        │          Timestep Embedding         │
+        │           Text/Label Embed          │
+        └──────────────────┼──────────────────┘
+                           │
+              ┌────────────┴────────────┐
+              │   DiT Transformer Blocks  │
+              │   (with optional MoE)     │
+              │  - Self-Attention         │
+              │  - adaLN-Zero Modulation  │
+              │  - Sparse MoE FFN         │
+              └────────────┬────────────┘
+                           │
+              ┌────────────┴────────────┐
+              │      Final Layer        │
+              │  - RGB Prediction Head  │
+              │  - Action Prediction    │
+              │  - Depth Prediction     │
+              └────────────┬────────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+    未来帧预测          动作预测           深度预测
+  (Future Frames)    (Actions)          (Depth)
+```
+
+### 1. 多模态输入嵌入层
+
+模型支持多种输入模态，每种模态通过独立的嵌入层转换为统一的 token 表示：
+
+#### 1.1 RGB 图像嵌入
+```python
+# 输入: VAE 潜在特征 (B, 4, 32, 32)
+x = self.x_embedder(x) + self.pos_embed  # → (B, num_patches, hidden_size)
+```
+- 使用 `PatchEmbed` 将图像分割为 patches
+- 添加固定的 2D sinusoidal 位置编码
+
+#### 1.2 动作嵌入
+```python
+# 输入: (B, action_steps, action_dim)
+a = self.a_embedder(noised_action) + self.a_pos_embed
+```
+- 线性投影到 hidden_size
+- 支持 sin-cos 位置编码或可学习位置编码
+
+#### 1.3 力/力矩嵌入
+```python
+# 输入: (B, 6) → [fx, fy, fz, tx, ty, tz]
+f = self.force_embedder(force_cond) + self.f_pos_embed
+```
+- 6D 力/力矩数据通过线性层投影
+
+#### 1.4 深度嵌入
+```python
+# 输入: (B, 1, 32, 32)
+d = self.d_embedder(depth) + self.d_pos_embed
+```
+- 使用独立的 PatchEmbed 处理深度图
+
+#### 1.5 文本/标签嵌入
+```python
+# 输入: CLIP 嵌入 (B, 512) 或 类别标签 (B,)
+y = self.y_embedder(y)
+```
+
+### 2. 模态 Token 序列组织
+
+所有模态的 token 被组织成一个统一的序列：
+
+```
+Token 序列结构:
+[RGB Patches][Action Tokens][Force Tokens][Depth Patches]
+    ↑              ↑                ↑              ↑
+   num_patches   action_steps        1        d_num_patches
+
+例如: [1024 RGB tokens][3 action tokens][1 force token][64 depth tokens]
+```
+
+每个 token 都有对应的 `modality_id`，用于 MoE 模态感知路由：
+- `modality_id = 0`: RGB tokens
+- `modality_id = 1`: Action tokens
+- `modality_id = 2`: Force tokens (如启用)
+- `modality_id = 3`: Depth tokens (如启用)
+
+### 3. DiT Block (Transformer 层)
+
+每个 DiT Block 包含以下组件：
+
+#### 3.1 AdaLN-Zero 调制
+```python
+def forward(self, x, c, modality_ids=None):
+    shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = \
+        self.adaLN_modulation(c).chunk(6, dim=1)
+
+    # 调制后的注意力
+    x = x + gate_msa * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
+
+    # 调制后的 MLP/MoE
+    x = x + gate_mlp * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
+```
+- 使用 timestep 和条件信息 `c` 生成 6 组调制参数
+- 分别调制 attention 和 MLP 层的输入和输出
+
+#### 3.2 多头自注意力
+```python
+class Attention(nn.Module):
+    # 标准的 Multi-Head Self-Attention
+    # 支持 fused attention 实现 (A100 加速)
+    # 可选的 attention mask 控制模态间交互
+```
+
+#### 3.3 MoE 前馈网络（可选）
+当 `use_moe=True` 时，替换标准 MLP 为 Sparse MoE：
+
+```python
+class DiTBlock:
+    if use_moe:
+        self.mlp = SparseMoeBlock(
+            embed_dim=hidden_size,
+            num_experts=num_experts,      # 专家数量 (默认 4)
+            num_experts_per_tok=top_k,     # 每个 token 选择的专家数 (默认 2)
+            n_shared_experts=shared_experts, # 共享专家 (默认 4)
+            ...
+        )
+```
+
+### 4. Sparse Mixture of Experts (MoE) 架构
+
+#### 4.1 MoE Gate (路由网络)
+```python
+class MoEGate(nn.Module):
+    def forward(self, hidden_states, modality_ids=None):
+        # 计算 logits
+        logits = F.linear(hidden_states, self.weight)
+
+        # 模态感知偏置 (可选)
+        if use_modality_bias:
+            logits += modality_bias[modality_ids]
+
+        # Top-K 选择
+        topk_weight, topk_idx = torch.topk(logits.softmax(dim=-1), k=top_k)
+
+        # 辅助损失 (负载均衡)
+        aux_loss = (pi * fi).sum() * alpha
+```
+
+**模态感知路由**: 不同模态的 token 可以有不同的专家偏好，通过 `modality_bias` 实现。
+
+#### 4.2 SparseMoeBlock
+```python
+class SparseMoeBlock(nn.Module):
+    def forward(self, hidden_states, modality_ids=None):
+        # 1. Gate 选择专家
+        topk_idx, topk_weight, aux_loss = self.gate(hidden_states, modality_ids)
+
+        # 2. 分发给选中的专家
+        for expert_idx, expert in enumerate(self.experts):
+            mask = (topk_idx == expert_idx)
+            routed[mask] = expert(hidden_states[mask])
+
+        # 3. 加权求和
+        output = (routed * topk_weight).sum(dim=1)
+
+        # 4. 添加共享专家输出
+        output = output + self.shared_experts(hidden_states)
+
+        return output
+```
+
+**关键特性**:
+- **稀疏激活**: 每个 token 只使用 top-k 个专家
+- **共享专家**: 所有 token 都经过共享专家，保持稳定性
+- **辅助损失**: 鼓励专家负载均衡
+
+#### 4.3 模态感知路由统计
+```python
+# 记录每个模态的路由统计 (用于监控)
+stats = {
+    "action_hit_rate": action 命中 expert0 的比例,
+    "action_coverage": action 使用的专家比例,
+    "rgb_coverage": RGB tokens 使用的专家比例,
+    "depth_coverage": Depth tokens 使用的专家比例
+}
+```
+
+### 5. 最终输出层
+
+```python
+class FinalLayer(nn.Module):
+    def forward(self, x, c):
+        # RGB 预测
+        rgb = modulate(self.norm_final(rgb_tokens), shift, scale)
+        rgb = self.linear(rgb)  # → (B, num_patches, patch_size^2 * out_channels)
+
+        # 动作预测
+        if use_action:
+            a = modulate(self.a_norm_final(action_tokens), shift, scale)
+            a = self.a_linear(a)  # → (B, action_steps, action_dim * 2)
+
+        # 深度预测
+        if use_depth:
+            d = modulate(self.d_norm_final(depth_tokens), shift, scale)
+            d = self.d_linear(d)  # → (B, d_patches, d_patch_size^2 * horizon)
+```
+
+### 6. 前向传播流程
+
+```python
+def forward(self, x, t, y, x_cond=None, action_cond=None,
+            noised_action=None, force_cond=None, depth_cond=None, noised_depth=None):
+
+    # 1. 拼接条件图像（如果有）
+    if x_cond is not None:
+        x = torch.cat([x, x_cond], dim=1)
+
+    # 2. 各模态嵌入
+    x = self.x_embedder(x) + self.pos_embed           # RGB
+    a = self.a_embedder(noised_action) + self.a_pos_embed  # Action
+    f = self.force_embedder(force_cond) + self.f_pos_embed  # Force
+    d = self.d_embedder(noised_depth) + self.d_pos_embed    # Depth
+
+    # 3. 拼接所有 token
+    x = torch.cat([x, a, f, d], dim=1)
+
+    # 4. 生成 modality_ids (用于 MoE)
+    modality_ids = ...  # [0,...,0, 1,...,1, 2,...,2, 3,...,3]
+
+    # 5. Timestep 和 条件嵌入
+    c = self.t_embedder(t) + self.y_embedder(y)
+
+    # 6. 通过 DiT Blocks
+    for block in self.blocks:
+        x = block(x, c, modality_ids)
+
+    # 7. 解码输出
+    rgb, action, depth = self.final_layer(x, c)
+
+    return rgb, action, depth
+```
+
+### 7. 模型变体
+
+| 模型 | Hidden Size | Depth | Heads | Params |
+|------|-------------|-------|-------|--------|
+| DiT-S | 384 | 12 | 6 | ~33M |
+| DiT-B | 768 | 12 | 12 | ~131M |
+| DiT-L | 1152 | 24 | 16 | ~458M |
+| DiT-XL | 1152 | 28 | 16 | ~675M |
+
+### 8. MoE 配置示例
+
+```yaml
+moe:
+  use_moe: true              # 启用 MoE
+  num_experts: 4             # 专家数量
+  moe_top_k: 2               # 每个 token 选择 2 个专家
+  aux_loss_weight: 0.01      # 辅助损失权重
+  moe_start_layer: 14        # 从第 14 层开始使用 MoE
+  moe_shared_experts: 4      # 共享专家数量
+  use_modality_bias: false   # 模态感知路由
+```
 
 ---
 
-**祝实施顺利！** 这个指南可作为 checklist：完成一个操作就勾选并记录结果。如果需要进一步细化代码层面的 TODO，可以在每个阶段下再拆分 issue/任务。搬运 DiT-MoE 的成熟模块、借鉴 DAE-MoE 的自门控设计、再结合 PAD 的多模态特性，就能稳步完成 PAD→PAD-MoE 的演进。***
+## 安装说明
+
+### 环境要求
+
+- Python 3.9 - 3.12
+- CUDA 12.1+
+- 16GB+ GPU 显存（推荐 A100 40GB）
+
+### 安装步骤
+
+1. **克隆项目**
+```bash
+git clone <repository_url>
+cd prediction_with_action
+```
+
+2. **创建 Conda 环境**
+```bash
+conda create -n pad python=3.10
+conda activate pad
+```
+
+3. **安装依赖**
+```bash
+pip install -r requirements-cloud.txt
+```
+
+### 依赖版本
+
+| 依赖 | 版本 |
+|------|------|
+| PyTorch | 2.5.1+cu121 |
+| Diffusers | 0.25.0 |
+| Transformers | 4.36.2 |
+| Timm | 0.9.12 |
+| MuJoCo-py | 2.1.2.14 |
+| WandB | 0.15.12 |
+
+---
+
+## 快速开始
+
+### 1. 数据准备
+
+**MetaWorld 数据**：
+```bash
+cd datasets
+python collect_metaworld_data_raw.py
+```
+
+**真实机器人数据**：
+```bash
+python convert_real_robot_data.py \
+    --input /path/to/newdata \
+    --output /path/to/converted \
+    --instruction "夹起魔方放到盘子里"
+```
+
+### 2. 训练模型
+
+```bash
+python train_robot.py --config configs/metaworld_4d.yaml
+```
+
+### 3. 评估模型
+
+```bash
+python run_metaworld.py
+```
+
+---
+
+## 配置说明
+
+配置文件采用 YAML 格式，主要包含以下部分：
+
+### training - 训练设置
+
+```yaml
+training:
+  feature_path: "/path/to/dataset"          # 数据集路径
+  results_dir: "results_metaworld_4d"       # 输出目录
+  model: "DiT-XL/2"                         # 模型架构
+  image_size: 256                           # 图像分辨率
+  predict_horizon: 3                        # 预测未来帧数
+  global_batch_size: 64                     # 全局批次大小
+  learning_rate: 5e-5                       # 学习率
+```
+
+### components - 组件设置
+
+```yaml
+components:
+  # VAE 和文本
+  vae_path: "/path/to/sd-vae-ft-mse"
+  clip_path: "/path/to/clip-vit-base-patch32"
+
+  # 多模态开关
+  text_cond: true           # 文本条件
+  use_depth: false          # 深度条件
+  use_force: true           # 力/力矩条件
+
+  # 动作设置
+  action_steps: 3
+  action_dim: 4             # MetaWorld: 4-DOF
+  action_condition: true
+```
+
+### moe - MoE 设置
+
+```yaml
+moe:
+  use_moe: true
+  num_experts: 4
+  moe_top_k: 2
+  aux_loss_weight: 0.01
+```
+
+---
+
+## 数据准备
+
+### 数据格式
+
+```
+dataset_path/
+├── dataset_info.json           # 数据集元数据
+├── force_stats.json            # 力统计信息
+├── episode0000000/
+│   ├── color_wrist_1_0000.npy  # VAE 潜在特征
+│   ├── color_wrist_1_0001.npy
+│   └── text_clip.npy           # CLIP 文本嵌入
+└── episode0000001/
+```
+
+### MetaWorld 数据采集
+
+```bash
+python datasets/collect_metaworld_data_raw.py
+
+# 输出：50 个任务 × 50 条轨迹
+# 指令示例: "press the button", "open the door"
+```
+
+---
+
+## 训练
+
+### 基础训练
+
+```bash
+python train_robot.py --config configs/metaworld_4d.yaml
+```
+
+### 多 GPU 训练
+
+```bash
+bash start_train_cloud_a100.sh
+```
+
+---
+
+## 评估
+
+### MetaWorld 评估
+
+```bash
+python run_metaworld.py --task button-press-v2
+```
+
+### 评估指标
+
+- Success Rate（任务成功率）
+- Action Loss（动作预测损失）
+- Visual FID（视觉预测质量）
+
+---
+
+## 常见问题
+
+### Q1: 中文文本指令支持吗？
+
+CLIP 对中文有一定支持，但主要在英文上训练。建议训练和推理使用相同语言。
+
+### Q2: 如何添加新的输入模态？
+
+在 `models.py` 中添加新的嵌入层，并在 `dataset.py` 中加载对应数据。
+
+### Q3: 力信号如何归一化？
+
+使用 `force_stats.json` 中的均值和标准差：
+```python
+force_normalized = (force - mean) / (std + 1e-8)
+```
+
+### Q4: 内存不足怎么办？
+
+- 减小 `global_batch_size`
+- 减小 `predict_horizon`
+- 使用梯度累积
+
+---
+
+## 引用
+
+如果本项目对你有帮助，请引用：
+
+```bibtex
+@inproceedings{pad2024,
+  title={Prediction with Action: A Unified Approach to Visual Policy Learning},
+  booktitle={NeurIPS},
+  year={2024}
+}
+```
