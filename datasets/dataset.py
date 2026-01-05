@@ -360,7 +360,7 @@ class RobotDataset(Dataset):
         # 2) 逐 episode 构建样本：仅保留完整地平线（不做尾部补帧）
         episodes = {}
         for s in step_infos:
-            ep = int(s["episode"])
+            ep = int(s["episode"].replace("episode", ""))
             episodes.setdefault(ep, []).append(s)
 
         H = args.predict_horizon
