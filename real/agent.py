@@ -1,0 +1,367 @@
+import torch
+import torch.distributed as dist
+import argparse
+import os
+import json
+from models import DiT_models
+from diffusion import create_diffusion
+from diffusers.models import AutoencoderKL
+from PIL import Image
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+
+def load_force_stats(args):
+    if not getattr(args, "use_force", False):
+        return None, None
+    if getattr(args, "force_mean", None) is not None and getattr(args, "force_std", None) is not None:
+        return (np.array(args.force_mean, dtype=np.float32),
+                np.array(args.force_std, dtype=np.float32))
+    stats_path = getattr(args, "force_stats_path", None)
+    if stats_path is None and getattr(args, "feature_path", None):
+        stats_root = str(args.feature_path).split("+")[0]
+        stats_path = os.path.join(stats_root, "force_stats.json")
+    if stats_path and os.path.exists(stats_path):
+        with open(stats_path, "r") as f:
+            payload = json.load(f)
+        mean = np.array(payload.get("mean", [0, 0, 0, 0, 0, 0]), dtype=np.float32)
+        std = np.array(payload.get("std", [1, 1, 1, 1, 1, 1]), dtype=np.float32)
+        return mean, std
+    print("⚠️ force_stats.json not found; defaulting to mean=0,std=1")
+    return np.zeros(6, dtype=np.float32), np.ones(6, dtype=np.float32)
+
+class DiffusionAgent():
+    def __init__(self, ckpt_path, vae_path="/cephfs/shared/llm/sd-vae-ft-mse", clip_path="/cephfs/shared/llm/clip-vit-base-patch32", denoise_steps=200, device_id=0, use_fp16: bool = False):
+        # 安全加载模型，添加argparse.Namespace到安全全局列表
+        torch.serialization.add_safe_globals([argparse.Namespace])
+
+        # 添加模型加载调试信息
+        print(f"🔄 Loading model from: {ckpt_path}")
+        file_size = os.path.getsize(ckpt_path) / (1024*1024*1024)  # GB
+        print(f"📁 Model file size: {file_size:.2f} GB")
+
+        try:
+            checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+        except Exception as e:
+            print(f"Failed to load with weights_only=True, falling back to weights_only=False: {e}")
+            checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+
+        # 打印模型信息
+        print(f"📋 Model keys: {list(checkpoint.keys())}")
+        if "args" in checkpoint:
+            args = checkpoint["args"]
+            print(f"🎯 Model args: {args}")
+            print(f"🏷️  Model name: {getattr(args, 'model', 'unknown')}")
+            print(f"📊 Image size: {getattr(args, 'image_size', 'unknown')}")
+            print(f"🔢 Epochs: {getattr(args, 'epochs', 'unknown')}")
+            print(f"🎲 Global seed: {getattr(args, 'global_seed', 'unknown')}")
+            print(f"📈 Action scale: {getattr(args, 'action_scale', 'unknown')}")
+        else:
+            print("⚠️  No 'args' key found in checkpoint!")
+            args = argparse.Namespace()  # 创建默认args
+
+        self.args = args
+
+        new_attr = ["action_condition", "action_dim", "action_steps", "d_hidden_size", "use_depth",
+                    "ckpt_wrapper"]
+        for attr in new_attr:
+            if not hasattr(self.args, attr):
+                setattr(self.args, attr, False)
+        if not hasattr(self.args, "use_force"):
+            self.args.use_force = False
+        if not hasattr(self.args, "force_dim"):
+            self.args.force_dim = 6
+        if not hasattr(self.args, "force_stats_path"):
+            self.args.force_stats_path = None
+        if not hasattr(self.args, "force_mean"):
+            self.args.force_mean = None
+        if not hasattr(self.args, "force_std"):
+            self.args.force_std = None
+        # if not hasattr(self.args, "action_condition"):
+        #     self.args.action_condition = False
+        if torch.cuda.is_available():
+            self.device = torch.device(f"cuda:{device_id}")
+        else:
+            self.device = torch.device("cpu")
+
+        # 是否启用 fp16（默认关闭，避免影响仿真/训练环境的一致性）
+        self.use_fp16 = bool(use_fp16) and (self.device.type == "cuda")
+
+        print("load dit")
+        self.latent_size = args.image_size // 8
+        self.model = DiT_models[args.model](
+            input_size=self.latent_size,
+            num_classes=args.num_classes,
+            args = args
+        )
+        state_dict = checkpoint["model"]
+        model_dict = self.model.state_dict()
+
+        # Map shared_experts weights if checkpoint used MoeMLP naming (gate_proj/up_proj/down_proj)
+        # but current model expects dense naming (fc1/fc2).
+        mapped = {}
+        for k, v in state_dict.items():
+            mapped[k] = v
+            if "shared_experts.gate_proj.weight" in k:
+                base = k.replace("gate_proj.weight", "")
+                fc1_key = base + "fc1.weight"
+                mapped[fc1_key] = v
+            if "shared_experts.down_proj.weight" in k:
+                base = k.replace("down_proj.weight", "")
+                fc2_key = base + "fc2.weight"
+                mapped[fc2_key] = v
+        # strip possible DistributedDataParallel prefix
+        cleaned = {}
+        for k, v in mapped.items():
+            if k.startswith("module."):
+                k = k[len("module."):]
+            cleaned[k] = v
+        state_dict = cleaned
+
+        # If checkpoint lacks shared_experts biases (older runs), fill zeros so load_state_dict stays strict.
+        for bias_key in ["shared_experts.fc1.bias", "shared_experts.fc2.bias"]:
+            full_keys = [k for k in model_dict.keys() if bias_key in k]
+            for k in full_keys:
+                if k not in state_dict:
+                    state_dict[k] = torch.zeros_like(model_dict[k])
+
+
+        # Debug overlap stats before we drop any keys
+        missing_keys = [k for k in model_dict.keys() if k not in state_dict]
+        unexpected_keys = [k for k in state_dict.keys() if k not in model_dict]
+        intersection = {k: v for k, v in state_dict.items() if k in model_dict}
+        print(f"🧭 State dict stats: ckpt_keys={len(state_dict)}, model_keys={len(model_dict)}, overlap={len(intersection)}")
+        if missing_keys:
+            print(f"⚠️ Missing keys (first 10): {missing_keys[:10]}")
+        if unexpected_keys:
+            print(f"⚠️ Unexpected keys (first 10): {unexpected_keys[:10]}")
+        state_dict = intersection
+
+        # 计算模型参数的哈希值用于比较
+        param_hash = 0
+        for key, tensor in sorted(state_dict.items()):
+            # 使用tensor的数据计算哈希
+            param_hash += hash((key, tuple(tensor.flatten()[:10].tolist())))  # 只取前10个元素避免内存问题
+        print(f"🔑 Model parameter hash (first 10 values per layer): {param_hash}")
+        print(f"📊 Total loaded parameters: {len(state_dict)}")
+
+        # 检查第一层的几个参数作为额外验证
+        if state_dict:
+            first_key = list(state_dict.keys())[0]
+            first_tensor = state_dict[first_key]
+            print(f"🔍 First layer '{first_key}' sample values: {first_tensor.flatten()[:5].tolist()}")
+
+        self.model.load_state_dict(state_dict)
+        self.model.to(self.device)
+        self.model.eval()
+
+        # Verify model is on correct device
+        first_param = next(self.model.parameters())
+        print(f"🔧 Main model device: {first_param.device}, dtype: {first_param.dtype}")
+
+        if getattr(self.args, "ckpt_wrapper", False):
+            self.args.ckpt_wrapper = False
+
+        self.force_mean, self.force_std = load_force_stats(self.args)
+
+        # 验证加载后的模型参数
+        with torch.no_grad():
+            # 获取第一个参数作为指纹
+            first_param = next(self.model.parameters())
+            print(f"✅ Loaded model fingerprint (first 5 values): {first_param.flatten()[:5].tolist()}")
+
+        print("load diffusion")
+        self.diffusion = create_diffusion(str(denoise_steps))
+
+        # CPU device for VAE and CLIP to save GPU memory
+        self.cpu_device = torch.device("cpu")
+
+        print("load vae and clip (on CPU to save GPU memory)")
+        self.vae = AutoencoderKL.from_pretrained(vae_path).to(self.cpu_device)
+        self.vae.eval()
+        from transformers import AutoTokenizer, CLIPTextModelWithProjection
+        self.clip_model = CLIPTextModelWithProjection.from_pretrained(clip_path).to(self.cpu_device)
+        self.clip_model.eval()
+        self.clip_tokenizer = AutoTokenizer.from_pretrained(clip_path)
+    
+    def encode_text(self, text):
+        with torch.no_grad():
+            inputs = self.clip_tokenizer([text], padding=True, return_tensors="pt")
+            # Move inputs to CPU for CLIP
+            inputs = {k: v.to(self.cpu_device) for k, v in inputs.items()}
+            outputs = self.clip_model(**inputs)
+            text_embeds = outputs.text_embeds
+            # Move text embeddings to GPU for main model
+            text_embeds = text_embeds.to(self.device)
+        return text_embeds
+
+    def encode_image(self, image):
+        image = np.array(image)
+        image = cv2.resize(image, (256,256), interpolation=cv2.INTER_AREA)
+        image = torch.tensor(image).float().permute(2,0,1).unsqueeze(0)
+        image = torch.clamp((image-128.0)/127.5, -1, 1)
+        # Move to CPU for VAE encoding
+        image = image.to(self.cpu_device)
+        with torch.no_grad():
+            latent = self.vae.encode(image).latent_dist.sample().mul_(0.18215)
+            # Move latent to GPU for main model
+            latent = latent.to(self.device)
+        return latent
+
+    def filter(self, depth):
+        depth = cv2.resize(depth, (32,32), interpolation=cv2.INTER_NEAREST)
+        depth = np.clip(depth/10000,0,1)
+        return depth
+
+    def filter2(self, depth):
+        depth = np.clip(depth,1000,5000)/5000
+        depth = np.array(depth*256,dtype=np.uint8)
+        depth = cv2.medianBlur(depth, 15)
+        depth = cv2.resize(depth,(32,32),interpolation=cv2.INTER_NEAREST)/256
+        return depth
+
+    
+    def action(self, text, rgb=None, depth=None, state=None, force=None):
+        y = self.encode_text(text)
+        x_cond = self.encode_image(rgb)
+
+        if depth is not None:
+            depth_cond = self.filter(depth) if not self.args.depth_filter else self.filter2(depth)
+            depth_cond = depth_cond[np.newaxis][np.newaxis]
+            depth_cond = torch.tensor(depth_cond).float().to(self.device)
+        else:
+            depth_cond = None
+        print("y shape:", y.shape, "x_cond shape:", x_cond.shape, "depth_cond shape:", depth_cond.shape if depth_cond is not None else None)
+
+        sample_fn = self.model.forward
+
+        t = self.args.predict_horizon
+        latent_size = self.args.image_size // 8
+        z = torch.randn(1, self.model.in_channels*t, latent_size, latent_size, device=self.device)
+        print(f"🎲 Initial noise z mean: {z.mean():.6f}, std: {z.std():.6f}")
+
+        if hasattr(self.args, "action_condition") and self.args.action_condition:
+            action_cond = torch.tensor(state*self.args.action_scale).float().to(self.device).unsqueeze(0).unsqueeze(0)
+        else:
+            action_cond = None
+        z_a_dim = 1 if self.args.action_condition else self.args.action_steps
+        length = self.args.action_dim if not self.args.action_condition else int(self.args.action_dim*self.args.action_steps)
+        z_a = torch.randn(1, z_a_dim, length, device=self.device) if self.args.action_steps>0 else None
+        z_d = torch.randn(1, t, self.args.d_hidden_size, self.args.d_hidden_size, device=self.device) if self.args.use_depth else None
+
+        print(f"🎯 Input state: {state[:4] if state is not None else None}")
+        print(f"🎯 Action scale: {getattr(self.args, 'action_scale', 'unknown')}")
+
+        if getattr(self.args, "use_force", False):
+            if force is None:
+                force_arr = np.zeros((1, 1, self.args.force_dim), dtype=np.float32)
+            else:
+                force_arr = np.array(force, dtype=np.float32).reshape(1, 1, self.args.force_dim)
+            if self.force_mean is not None and self.force_std is not None:
+                std = np.where(self.force_std < 1e-6, 1.0, self.force_std)
+                force_arr = (force_arr - self.force_mean.reshape(1, 1, -1)) / std.reshape(1, 1, -1)
+            force_cond = torch.tensor(force_arr).float().to(self.device)
+        else:
+            force_cond = None
+
+        model_kwargs = {
+            "y": y,
+            "x_cond": x_cond,
+            "noised_action": z_a,
+            "depth_cond": depth_cond,
+            "noised_depth": z_d,
+            "action_cond": action_cond,
+            "force_cond": force_cond,
+        }
+        with torch.no_grad():
+            if self.args.action_steps ==0 and not self.args.use_depth:
+                samples = self.diffusion.p_sample_loop(
+                sample_fn, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=False, device=self.device
+            )
+                samples_a = None
+                sample_depth = None
+            else:
+                samples, samples_a, sample_depth = self.diffusion.p_sample_loop(
+                sample_fn, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=False, device=self.device
+            )
+                if samples_a is not None:
+                    samples_a = samples_a.detach().cpu().numpy()
+                if sample_depth is not None:
+                    sample_depth = sample_depth.detach().cpu().numpy()
+
+        # 添加结果调试信息
+        if samples_a is not None:
+            print(f"🎯 Action prediction shape: {samples_a.shape}")
+            print(f"🎯 Action prediction sample values: {samples_a[0, 0, :5]}")
+            print(f"🎯 Action prediction mean: {samples_a.mean():.6f}, std: {samples_a.std():.6f}")
+
+        print(f"🎯 Latent prediction mean: {samples.mean():.6f}, std: {samples.std():.6f}")
+
+        return samples, samples_a, sample_depth
+    
+    def decode(self, x, x_pred, prefix="", save=False):
+        x = cv2.resize(x, (256,256), interpolation=cv2.INTER_AREA)
+        B,C,H,W = x_pred.shape
+        t = self.args.predict_horizon
+        x_pred = x_pred.view(B*t,int(C/t),H,W)
+        # Move latent to CPU for VAE decoding (VAE is on CPU)
+        x_pred = x_pred.to(self.cpu_device)
+        rec_pred = self.vae.decode(x_pred / 0.18215).sample
+        rec_pred = torch.clamp(127.5 * rec_pred + 128.0, 0, 255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy() # 3, 256,256,3
+        img = np.concatenate([x, rec_pred[0], rec_pred[1], rec_pred[2]], axis=1)
+        if not save:
+            return img
+        # save img
+        import time
+        uuid = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+        img = Image.fromarray(img).save(f"output/predict_{prefix}_{uuid}.jpg")
+    
+    def decode_depth(self, depth, depth_pred, prefix="",save=False):
+        # depth = cv2.resize(depth, (32,32), interpolation=cv2.INTER_NEAREST)
+        depth_cond = self.filter(depth) if not self.args.depth_filter else self.filter2(depth)
+        B,C,H,W = depth_pred.shape
+        t = self.args.predict_horizon
+        depth_pred = depth_pred.reshape(B*t,int(C/t),H,W)
+        print("depth_pred shape:", depth_pred.shape)
+        print("depth shape:", depth_cond.shape if depth_cond is not None else None)
+        depth_img = np.concatenate([depth_cond, depth_pred[0][0], depth_pred[1][0], depth_pred[2][0]], axis=1)
+        if not save:
+            return depth_img
+        # save img
+        import time
+        uuid = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+        plt.imsave(f"output/predict_{prefix}_{uuid}_depth.png", depth_img)
+        # Image.fromarray(depth_img).save(f"diffusion_deploy/predict_{prefix}_{uuid}_depth2.png")
+
+    def decode_rgb(self, x, x_pred, prefix=""):
+        x = cv2.resize(x, (256,256), interpolation=cv2.INTER_AREA)
+        B,C,H,W = x_pred.shape
+        t = self.args.predict_horizon
+        x_pred = x_pred.view(B*t,int(C/t),H,W)
+        # Move latent to CPU for VAE decoding (VAE is on CPU)
+        x_pred = x_pred.to(self.cpu_device)
+        rec_pred = self.vae.decode(x_pred / 0.18215).sample
+        rec_pred = torch.clamp(127.5 * rec_pred + 128.0, 0, 255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy() # 3, 256,256,3
+        img = np.concatenate([rec_pred[0], rec_pred[1], rec_pred[2]], axis=1)
+        return img
+
+
+
+
+if __name__ == "__main__":
+    # depth image
+    agent = DiffusionAgent(ckpt_path="/cephfs/cjyyj/dit_ckpt/063-DiT-XL-2-2024-04-26-21-58-30/checkpoints/0120000.pt")
+
+    # load image at "/cephfs/shared/panda_real_data_processed/2024-04-26-pick_random/episode0000009/color_wrist_1_0000.jpg"
+    rgb = Image.open("/cephfs/shared/panda_real_data_processed/2024-04-26-pick_random/episode0000409/color_wrist_1_0000.jpg").convert("RGB")
+    rgb = np.array(rgb)
+    
+    depth = np.load("/cephfs/shared/panda_real_data_processed/2024-04-26-pick_random/episode0000409/depth_wrist_1_0000.npy")
+    text = "pick the blue block"
+
+    samples,sample_a,sample_depth = agent.action(text, rgb, depth)
+    if sample_a is not None:
+        print(sample_a)
+    agent.decode(rgb, samples)
+    
+        

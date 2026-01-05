@@ -1,0 +1,15 @@
+# RealSense Interface Requirements
+
+# Core dependencies
+numpy>=1.19.0
+opencv-python>=4.5.0
+pyrealsense2>=2.51.1
+
+# Video recording
+av>=8.0.0
+
+# Multi-processing and threading
+threadpoolctl>=2.0.0
+
+# Optional: for examples and testing
+matplotlib>=3.3.0

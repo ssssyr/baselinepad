@@ -1,0 +1,12 @@
+numpy>=1.19.0
+opencv-python>=4.5.0
+pyrealsense2>=2.51.1
+av>=8.0.0
+threadpoolctl>=2.0.0
+matplotlib>=3.3.0
+
+[dev]
+pytest>=6.0
+pytest-cov>=2.0
+black>=21.0
+flake8>=3.8
