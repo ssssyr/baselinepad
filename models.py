@@ -559,7 +559,7 @@ class DiT(nn.Module):
             nn.init.xavier_uniform_(self.force_embedder.weight)
             nn.init.constant_(self.force_embedder.bias, 0)
             # Use fixed sin-cos positional embedding (like RGB/depth/action)
-            _, pos_h = self.f_pos_embed.shape
+            pos_h = self.f_pos_embed.shape[-1]
             f_pos_embed = get_1d_sincos_pos_embed_from_grid(pos_h, np.array([0], dtype=np.float32))
             self.f_pos_embed.data.copy_(torch.from_numpy(f_pos_embed).float().unsqueeze(0))
 
