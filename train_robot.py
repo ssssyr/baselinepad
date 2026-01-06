@@ -520,6 +520,8 @@ def main(args):
     running_moe_aux = 0.0
     routing_sums = {}
     routing_counts = {}
+    grad_sums = {}
+    grad_counts = {}
     start_time = time()
     eval_batch = None
     best_action_loss = 1e8
@@ -609,6 +611,37 @@ def main(args):
 
             opt.zero_grad()
             accelerator.backward(loss)
+
+            # === 记录梯度范数（按模态分组）===
+            grad_stats = {}
+            if getattr(args, "use_expert_adaln", False):
+                # 获取模型（考虑 DDP 包装）
+                model_for_grad = accelerator.unwrap_model(model)
+                for name, param in model_for_grad.named_parameters():
+                    if param.grad is not None:
+                        grad_norm = param.grad.norm().item()
+                        # 按 modality 分组统计 expert LayerNorm 梯度
+                        # norm1_experts.N / norm2_experts.N 中的 N 是 modality id
+                        if "norm1_experts" in name:
+                            modality_id = name.split(".")[2]  # norm1_experts.{id}.weight
+                            modality_name = {0: "rgb", 1: "action", 2: "depth", 3: "force"}.get(int(modality_id), f"mod_{modality_id}")
+                            key = f"grad_norm/norm1_{modality_name}"
+                            grad_stats[key] = grad_stats.get(key, 0.0) + grad_norm
+                        elif "norm2_experts" in name:
+                            modality_id = name.split(".")[2]
+                            modality_name = {0: "rgb", 1: "action", 2: "depth", 3: "force"}.get(int(modality_id), f"mod_{modality_id}")
+                            key = f"grad_norm/norm2_{modality_name}"
+                            grad_stats[key] = grad_stats.get(key, 0.0) + grad_norm
+                        elif "norm" in name and "expert" not in name:
+                            # 共享 LayerNorm（未使用 expert adaln 时）
+                            grad_stats["grad_norm/shared_norm"] = grad_stats.get("grad_norm/shared_norm", 0.0) + grad_norm
+
+                # 累积统计用于平均
+                for key in grad_stats:
+                    grad_sums[key] = grad_sums.get(key, 0.0) + grad_stats[key]
+                    grad_counts[key] = grad_counts.get(key, 0) + 1
+            # =============================================
+
             opt.step()
             
             # Step learning rate scheduler
@@ -643,6 +676,11 @@ def main(args):
                     cnt = routing_counts.get(k, 0)
                     if cnt > 0:
                         routing_avg[k] = routing_sums[k] / cnt
+                grad_norm_avg = {}
+                for k in grad_sums:
+                    cnt = grad_counts.get(k, 0)
+                    if cnt > 0:
+                        grad_norm_avg[k] = grad_sums[k] / cnt
 
                 if accelerator.is_main_process:
                     # Get current learning rate
@@ -659,6 +697,14 @@ def main(args):
                             if "rgb_coverage" in routing_avg:
                                 log_msg += f"RGBCov:{routing_avg['rgb_coverage']:.3f}, "
                     log_msg += f"Train Steps/Sec: {steps_per_sec:.2f}, LR: {current_lr:.2e}"
+                    # 添加梯度范数信息
+                    if grad_norm_avg:
+                        log_msg += " | GradNorm: "
+                        grad_parts = []
+                        for k in sorted(grad_norm_avg.keys()):
+                            modality = k.split("_")[-1]  # rgb/action/depth/force
+                            grad_parts.append(f"{modality}={grad_norm_avg[k]:.4f}")
+                        log_msg += ", ".join(grad_parts)
                     logger.info(log_msg)
                     if args.use_wandb:
                         import wandb
@@ -675,6 +721,9 @@ def main(args):
                             log_payload["train/moe_aux_loss"] = avg_moe_aux
                             for k, v in routing_avg.items():
                                 log_payload[f"moe/{k}"] = v
+                        # 添加梯度范数到 wandb
+                        for k, v in grad_norm_avg.items():
+                            log_payload[k] = v
                         wandb.log(log_payload, step=train_steps)
 
                 running_loss = 0.0
@@ -683,6 +732,8 @@ def main(args):
                 running_moe_aux = 0.0
                 routing_sums = {}
                 routing_counts = {}
+                grad_sums = {}
+                grad_counts = {}
                 log_steps = 0
                 start_time = time()
 
@@ -915,6 +966,10 @@ if __name__ == "__main__":
     parser.add_argument("--router-z-loss-weight", type=float)
     parser.add_argument("--moe-start-layer", type=int)
     parser.add_argument("--moe-shared-experts", type=int)
+
+    # Expert AdaLN
+    parser.add_argument("--use-expert-adaln", action="store_true",
+                        help="Use per-modality expert LayerNorms in DiT blocks (CogVideoX style)")
 
     # Wandb
     parser.add_argument("--use-wandb", action="store_true")

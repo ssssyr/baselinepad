@@ -22,6 +22,43 @@ def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
 
+def apply_expert_ln(x, modality_ids, experts):
+    """
+    Apply per-modality expert LayerNorm to tokens.
+
+    Args:
+        x: (B, N, D) input tokens
+        modality_ids: (B, N) long tensor, modality id for each token (0..M-1)
+        experts: ModuleList of M LayerNorm modules, each with elementwise_affine=True
+
+    Returns:
+        (B, N, D) normalized tokens, where tokens from modality m use experts[m]
+    """
+    B, N, D = x.shape
+    num_modalities = len(experts)
+
+    if modality_ids is None:
+        modality_ids = torch.zeros((B, N), dtype=torch.long, device=x.device)
+
+    # Clamp modality_ids to valid range [0, num_modalities-1] to avoid index errors
+    modality_ids = torch.clamp(modality_ids, 0, num_modalities - 1)
+
+    # Start with zeros and fill in normalized tokens per modality
+    output = torch.zeros_like(x)
+
+    for m in range(num_modalities):
+        mask = (modality_ids == m)
+        if mask.any():
+            # Select tokens for this modality
+            tokens = x[mask]  # (K, D) where K is number of tokens with this modality
+            # Apply expert LayerNorm
+            normalized = experts[m](tokens)
+            # Scatter back
+            output[mask] = normalized
+
+    return output
+
+
 #################################################################################
 #               Embedding Layers for Timesteps and Class Labels                 #
 #################################################################################
@@ -195,12 +232,27 @@ class DiTBlock(nn.Module):
         use_modality_bias=False,
         modality_bias_init=None,
         num_modalities=3,
+        use_expert_adaln=False,
         **block_kwargs,
     ):
         super().__init__()
-        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.use_expert_adaln = use_expert_adaln
+        if use_expert_adaln:
+            # Create per-modality expert LayerNorms with learnable affine params
+            self.norm1_experts = nn.ModuleList([
+                nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
+                for _ in range(num_modalities)
+            ])
+            self.norm2_experts = nn.ModuleList([
+                nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
+                for _ in range(num_modalities)
+            ])
+        else:
+            # Shared LayerNorm without affine parameters (original behavior)
+            self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+            self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+
         self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs)
-        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.use_moe = use_moe
         if self.use_moe:
             self.mlp = SparseMoeBlock(
@@ -226,8 +278,21 @@ class DiTBlock(nn.Module):
 
     def forward(self, x, c, modality_ids=None):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
-        x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
-        mlp_input = modulate(self.norm2(x), shift_mlp, scale_mlp)
+
+        # Apply expert LayerNorms if enabled, otherwise use shared norm
+        if self.use_expert_adaln:
+            normed_x = apply_expert_ln(x, modality_ids, self.norm1_experts)
+        else:
+            normed_x = self.norm1(x)
+
+        x = x + gate_msa.unsqueeze(1) * self.attn(modulate(normed_x, shift_msa, scale_msa))
+
+        if self.use_expert_adaln:
+            normed_x = apply_expert_ln(x, modality_ids, self.norm2_experts)
+        else:
+            normed_x = self.norm2(x)
+
+        mlp_input = modulate(normed_x, shift_mlp, scale_mlp)
         if self.use_moe:
             x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input, modality_ids=modality_ids)
         else:
@@ -349,18 +414,23 @@ class DiT(nn.Module):
         self.use_modality_bias = bool(getattr(args, "use_modality_bias", False))
         self.modality_bias_strength_action = float(getattr(args, "modality_bias_strength_action", 0.0))
         self.modality_bias_strength_depth = float(getattr(args, "modality_bias_strength_depth", 0.0))
+        self.use_expert_adaln = bool(getattr(args, "use_expert_adaln", False))
         self.use_force = bool(getattr(args, "use_force", False))
         self.force_dim = int(getattr(args, "force_dim", 6))
         self.args.use_force = self.use_force
         self.args.force_dim = self.force_dim
-        self.moe_num_modalities = 4 if self.use_force else 3
+        # 只为实际使用的模态创建 experts：rgb(0) + action(1) + force?(2) + depth?(2/3)
+        base_modalities = 2  # rgb + action
+        self.moe_num_modalities = base_modalities + int(self.use_force) + int(getattr(args, "use_depth", False))
         self.moe_modality_bias_init = None
         if self.use_modality_bias:
             bias = torch.zeros(self.moe_num_modalities, self.moe_num_experts)
             if self.modality_bias_strength_action != 0.0:
                 bias[1, 0] = self.modality_bias_strength_action
-            if self.modality_bias_strength_depth != 0.0:
-                depth_modality_id = 3 if self.use_force else 2
+            if self.modality_bias_strength_depth != 0.0 and getattr(args, "use_depth", False):
+                # depth modality id = 2 if (rgb, action, force) or 3 if (rgb, action, depth)
+                # 实际上 depth 总是排在最后：force 存在时 id=3，否则 id=2
+                depth_modality_id = 2 + int(self.use_force)
                 bias[depth_modality_id, 1] = self.modality_bias_strength_depth
             self.moe_modality_bias_init = bias
         x_embedder_channels = in_channels if not args.dynamics else in_channels+in_channels*args.predict_horizon
@@ -412,14 +482,18 @@ class DiT(nn.Module):
         if args.attn_mask:
             token_num = rgb_l + a_l + force_l + depth_l
             attn_mask = torch.ones((token_num, token_num), dtype=torch.bool)
-            attn_mask[:rgb_l,rgb_l:] = False
-            if self.use_force and args.use_depth and depth_l > 0:
+            # RGB cannot see subsequent tokens
+            attn_mask[:rgb_l, rgb_l:] = False
+            # Force cannot see any other modality (unidirectional mask)
+            if self.use_force:
                 force_start = rgb_l + a_l
                 force_end = force_start + force_l
-                depth_start = force_end
-                depth_end = depth_start + depth_l
-                attn_mask[force_start:force_end, depth_start:depth_end] = False
-                attn_mask[depth_start:depth_end, force_start:force_end] = False
+                # Force cannot see RGB, Action, Depth
+                attn_mask[force_start:force_end, :force_start] = False
+                if args.use_depth and depth_l > 0:
+                    depth_start = force_end
+                    depth_end = depth_start + depth_l
+                    attn_mask[force_start:force_end, depth_start:depth_end] = False
         blocks = []
         for layer_idx in range(depth):
             block_uses_moe = self.use_moe and (self.moe_start_layer is None or layer_idx >= self.moe_start_layer)
@@ -437,6 +511,7 @@ class DiT(nn.Module):
                 use_modality_bias=self.use_modality_bias and block_uses_moe,
                 modality_bias_init=self.moe_modality_bias_init,
                 num_modalities=self.moe_num_modalities,
+                use_expert_adaln=self.use_expert_adaln,
             )
         )
         self.blocks = nn.ModuleList(blocks)
@@ -483,7 +558,10 @@ class DiT(nn.Module):
         if self.use_force:
             nn.init.xavier_uniform_(self.force_embedder.weight)
             nn.init.constant_(self.force_embedder.bias, 0)
-            nn.init.xavier_uniform_(self.f_pos_embed)
+            # Use fixed sin-cos positional embedding (like RGB/depth/action)
+            _, pos_h = self.f_pos_embed.shape
+            f_pos_embed = get_1d_sincos_pos_embed_from_grid(pos_h, np.array([0], dtype=np.float32))
+            self.f_pos_embed.data.copy_(torch.from_numpy(f_pos_embed).float().unsqueeze(0))
 
         # Initialize label embedding table:
         nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02)
