@@ -299,7 +299,7 @@ class SingleRealsense(mp.Process):
         try:
             # If serial_number is None, do not call enable_device (auto-select).
             if self.serial_number is not None:
-            rs_config.enable_device(self.serial_number)
+                rs_config.enable_device(self.serial_number)
 
             # start pipeline
             pipeline = rs.pipeline()

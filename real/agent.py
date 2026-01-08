@@ -195,9 +195,52 @@ class DiffusionAgent():
             text_embeds = text_embeds.to(self.device)
         return text_embeds
 
+    @staticmethod
+    def letterbox_resize(image, target_size=256):
+        """
+        Letterbox 调整图像大小：保持宽高比，用黑边填充
+        与训练时的处理方式保持一致
+
+        Args:
+            image: numpy array (H, W, C) or PIL Image
+            target_size: int, 目标正方形尺寸
+
+        Returns:
+            numpy array: 处理后的图像 (target_size, target_size, 3)
+        """
+        from PIL import Image
+
+        # 转换为 PIL Image
+        if isinstance(image, np.ndarray):
+            pil_image = Image.fromarray(image)
+        else:
+            pil_image = image
+
+        original_w, original_h = pil_image.size
+
+        # 计算缩放比例（使长边等于目标尺寸）
+        scale = target_size / max(original_w, original_h)
+
+        # 等比例缩放
+        new_w = int(round(original_w * scale))
+        new_h = int(round(original_h * scale))
+        resized = pil_image.resize((new_w, new_h), resample=Image.BICUBIC)
+
+        # 创建黑色背景
+        result = Image.new("RGB", (target_size, target_size), (0, 0, 0))
+
+        # 计算粘贴位置（居中）
+        paste_x = (target_size - new_w) // 2
+        paste_y = (target_size - new_h) // 2
+
+        # 粘贴缩放后的图像
+        result.paste(resized, (paste_x, paste_y))
+
+        return np.array(result)
+
     def encode_image(self, image):
-        image = np.array(image)
-        image = cv2.resize(image, (256,256), interpolation=cv2.INTER_AREA)
+        # 使用 letterbox resize 保持宽高比，与训练时一致
+        image = self.letterbox_resize(image, target_size=256)
         image = torch.tensor(image).float().permute(2,0,1).unsqueeze(0)
         image = torch.clamp((image-128.0)/127.5, -1, 1)
         # Move to CPU for VAE encoding
@@ -300,7 +343,8 @@ class DiffusionAgent():
         return samples, samples_a, sample_depth
     
     def decode(self, x, x_pred, prefix="", save=False):
-        x = cv2.resize(x, (256,256), interpolation=cv2.INTER_AREA)
+        # 使用 letterbox 处理原始图像，保持宽高比
+        x = self.letterbox_resize(x, target_size=256)
         B,C,H,W = x_pred.shape
         t = self.args.predict_horizon
         x_pred = x_pred.view(B*t,int(C/t),H,W)
@@ -334,7 +378,8 @@ class DiffusionAgent():
         # Image.fromarray(depth_img).save(f"diffusion_deploy/predict_{prefix}_{uuid}_depth2.png")
 
     def decode_rgb(self, x, x_pred, prefix=""):
-        x = cv2.resize(x, (256,256), interpolation=cv2.INTER_AREA)
+        # 使用 letterbox 处理原始图像，保持宽高比
+        x = self.letterbox_resize(x, target_size=256)
         B,C,H,W = x_pred.shape
         t = self.args.predict_horizon
         x_pred = x_pred.view(B*t,int(C/t),H,W)

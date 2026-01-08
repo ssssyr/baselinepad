@@ -11,11 +11,9 @@ import numpy as np
 #    MODEL CONFIGURATION
 # -------------------------------
 
-CHECKPOINT_ROOT = Path("/home/syr/code/checkpoints")
-
 CONFIG = {
     "model": {
-        "ckpt_path": str(CHECKPOINT_ROOT / "checkpoint0103mf" / "0030000.pt"),
+        "ckpt_path": "/home/syr/code/checkpoints/checkpoint0107/best_action_loss.pt",
         "vae_path": "/home/syr/code/models/sd-vae-ft-mse",
         "clip_path": "/home/syr/code/models/clip-vit-base-patch32",
         "denoise_steps": "ddim16",
@@ -86,7 +84,7 @@ CONFIG = {
     },
     "task": {
         "max_steps": 50,
-        "task_instruction": "夹起魔方放到盘子里",
+        "task_instruction": "Pick up the Rubik's Cube and place it on the plate.",
         "gripper_threshold": 0.75,
     },
     "force_stats": {

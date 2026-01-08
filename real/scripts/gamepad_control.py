@@ -169,12 +169,28 @@ def main(robot_ip, gripper_ip, config, frequency, sensitivity):
     # 初始化组件
     gripper = None  # 确保 finally 里始终可用
     try:
-        # 初始化手柄
-        gamepad = GamepadHandler(
-            deadzone=robot_config.get('deadzone', 0.1),
-            trigger_speed_mult=gamepad_config.get('trigger_speed_mult', 2.0),
-            trigger_slow_mult=gamepad_config.get('trigger_slow_mult', 0.1)
-        )
+        # 初始化手柄（使用 config 字典）
+        gamepad_config_full = {
+            'deadzone': robot_config.get('deadzone', 0.1),
+            'linear_speed_max': robot_config.get('linear_speed_max', 0.1),
+            'angular_speed_max': robot_config.get('angular_speed_max', 0.5),
+            'axis_map': {
+                'LEFT_STICK_X': 0, 'LEFT_STICK_Y': 1,
+                'RIGHT_STICK_X': 3, 'RIGHT_STICK_Y': 4,
+                'LT': 2, 'RT': 5,  # Xbox 360: LT=轴2, RT=轴5
+            },
+            'button_map': {
+                'A': 0, 'B': 1, 'X': 2, 'Y': 3,
+                'LB': 4, 'RB': 5, 'LT': 6, 'RT': 7,
+                'SELECT': 6, 'START': 7,
+                'BACK': 6,  # SELECT = BACK
+                'RESET_POSE': 3,  # Y = RESET_POSE
+                'DELETE_LAST': 2,  # X = DELETE_LAST
+                'LSTICK': 8, 'RSTICK': 9,
+                'HOME': 10
+            }
+        }
+        gamepad = GamepadHandler(gamepad_config_full)
         
         # 初始化机械臂
         robot = RobotController(
@@ -222,19 +238,21 @@ def main(robot_ip, gripper_ip, config, frequency, sensitivity):
             if control_buttons['exit']:
                 print("退出程序")
                 break
-            
-            if control_buttons['reset']:
+
+            if control_buttons['reset_pose']:
                 robot.reset_to_initial()
                 print("重置到初始位置")
             
-            # 获取移动输入
-            delta_pos, current_sensitivity = gamepad.get_movement_input(sensitivity)
+            # 获取速度输入（使用新 API）
+            lin_vel, ang_vel = gamepad.get_teleop_velocity()
+
+            # 转换成位置变化（简单积分）
+            delta_pos = lin_vel * dt
+            delta_rotation = ang_vel[2] * dt  # 只用 z 轴旋转
+
             if np.any(delta_pos != 0):
                 robot.move_by_delta(delta_pos)
-            
-            # 获取旋转输入
-            rotation_speed = robot_config.get('rotation_speed', 0.02)
-            delta_rotation = gamepad.get_rotation_input(rotation_speed)
+
             if abs(delta_rotation) > 0:
                 robot.rotate_tool_z(delta_rotation)
             

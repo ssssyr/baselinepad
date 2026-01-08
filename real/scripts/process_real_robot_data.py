@@ -196,6 +196,7 @@ def main():
             images = episode_data["image"]  # (T, 720, 1280, 3)
             robot_pose = episode_data["robot_pose"]  # (T, 6) - [x, y, z, rx, ry, rz]
             gripper_state = episode_data["gripper_state"]  # (T,)
+            raw_action = episode_data["action"]  # (T, 7) - [vx, vy, vz, wx, wy, wz, gripper_cmd]
             force_torque = episode_data.get("force_torque", np.zeros((len(images), 6)))  # (T, 6)
 
             num_frames = len(images)
@@ -233,12 +234,13 @@ def main():
                 latent_path = os.path.join(episode_dir, f"color_wrist_1_{frame_idx:04}.npy")
                 np.save(latent_path, latent)
 
-                # 2. 提取 4 DOF 动作: [x, y, z, gripper]
+                # 2. 提取 4 DOF: [x, y, z, gripper]
+                # gripper 从 raw_action[:, 6] 获取（命令值）
                 action = [
                     float(robot_pose[frame_idx, 0]),  # x
                     float(robot_pose[frame_idx, 1]),  # y
                     float(robot_pose[frame_idx, 2]),  # z
-                    float(gripper_state[frame_idx])    # gripper (0-1)
+                    float(raw_action[frame_idx, 6])    # gripper 命令
                 ]
                 state = action.copy()  # state 与 action 相同
 

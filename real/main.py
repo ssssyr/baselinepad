@@ -77,7 +77,7 @@ def is_pose_safe(pose, workspace_limits=None):
     default_limits = {
         'x_min': -0.27, 'x_max': 0.5,
         'y_min': 0.5, 'y_max': 1.1,
-        'z_min': -0.1,  'z_max': 0.142,
+        'z_min': -0.13,  'z_max': 0.142,
     }
 
     limits = workspace_limits or default_limits
@@ -94,6 +94,115 @@ def is_pose_safe(pose, workspace_limits=None):
         return False
 
     return True
+
+
+def create_debug_image(step, max_steps, current_pose, current_gripper, target_xyz, target_gripper,
+                       force_torque, time_diff=None, action_output=None, gripper_threshold=0.75):
+    """
+    创建调试信息图像，使用大字体显示。
+
+    Args:
+        step: 当前步骤
+        max_steps: 最大步骤数
+        current_pose: 当前机器人位姿 [x, y, z, rx, ry, rz]
+        current_gripper: 当前夹爪状态
+        target_xyz: 目标位置 [x, y, z]
+        target_gripper: 目标夹爪状态
+        force_torque: 力/力矩数据 [fx, fy, fz, tx, ty, tz]
+        time_diff: 图像和机器人位置时间差（可选）
+        action_output: 模型原始输出（可选）
+        gripper_threshold: 夹爪阈值
+
+    Returns:
+        debug_image: 调试信息图像 (BGR)
+    """
+    # 图像尺寸
+    width, height = 600, 800
+    img = np.ones((height, width, 3), dtype=np.uint8) * 40  # 深灰色背景
+
+    # 字体设置
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.8  # 大字体
+    color_title = (0, 255, 255)  # 黄色标题
+    color_value = (0, 255, 0)    # 绿色数值
+    color_warning = (0, 165, 255)  # 橙色警告
+
+    y_offset = 40
+    line_height = 40
+
+    def draw_text(text, y, color=color_value):
+        nonlocal y_offset
+        cv2.putText(img, text, (20, y), font, font_scale, color, 2)
+        y_offset += line_height
+
+    # 标题
+    draw_text(f"=== DEBUG INFO ===", y_offset, color_title)
+    y_offset += 10
+
+    # 步骤信息
+    draw_text(f"Step: {step}/{max_steps}", y_offset, color_title)
+
+    # ============ 模型输出（放在最前面）============
+    if action_output is not None:
+        y_offset += 15
+        draw_text("=== MODEL OUTPUT ===", y_offset, color_title)
+        draw_text(f"Raw: {action_output:.3f}", y_offset)
+        draw_text(f"Threshold: {gripper_threshold}", y_offset)
+
+    # 目标位置
+    y_offset += 15
+    draw_text("--- Target Position ---", y_offset, color_title)
+    draw_text(f"X: {target_xyz[0]:.4f} m", y_offset)
+    draw_text(f"Y: {target_xyz[1]:.4f} m", y_offset)
+    draw_text(f"Z: {target_xyz[2]:.4f} m", y_offset)
+
+    # 目标夹爪
+    target_gripper_status = "OPEN" if target_gripper > 0.5 else "CLOSED"
+    target_gripper_color = color_value if target_gripper > 0.5 else color_warning
+    draw_text(f"Target Gripper: {target_gripper:.2f} ({target_gripper_status})", y_offset, target_gripper_color)
+
+    # 当前位姿
+    y_offset += 15
+    draw_text("--- Current Pose ---", y_offset, color_title)
+    draw_text(f"X: {current_pose[0]:.4f} m", y_offset)
+    draw_text(f"Y: {current_pose[1]:.4f} m", y_offset)
+    draw_text(f"Z: {current_pose[2]:.4f} m", y_offset)
+    draw_text(f"RX: {current_pose[3]:.4f}", y_offset)
+    draw_text(f"RY: {current_pose[4]:.4f}", y_offset)
+    draw_text(f"RZ: {current_pose[5]:.4f}", y_offset)
+
+    # 当前夹爪
+    gripper_status = "OPEN" if current_gripper > 0.5 else "CLOSED"
+    gripper_color = color_value if current_gripper > 0.5 else color_warning
+    draw_text(f"Gripper: {current_gripper:.2f} ({gripper_status})", y_offset, gripper_color)
+
+    # 位移差
+    y_offset += 15
+    delta = target_xyz - current_pose[:3]
+    distance = np.linalg.norm(delta)
+    dist_color = color_warning if distance > 0.1 else color_value
+    draw_text("--- Motion Delta ---", y_offset, color_title)
+    draw_text(f"Distance: {distance:.4f} m", y_offset, dist_color)
+    draw_text(f"Delta: [{delta[0]:.4f}, {delta[1]:.4f}, {delta[2]:.4f}]", y_offset)
+
+    # 力/力矩数据
+    if force_torque is not None:
+        y_offset += 15
+        draw_text("--- Force/Torque ---", y_offset, color_title)
+        draw_text(f"FX: {force_torque[0]:.2f} N", y_offset)
+        draw_text(f"FY: {force_torque[1]:.2f} N", y_offset)
+        draw_text(f"FZ: {force_torque[2]:.2f} N", y_offset)
+        draw_text(f"TX: {force_torque[3]:.2f} Nm", y_offset)
+        draw_text(f"TY: {force_torque[4]:.2f} Nm", y_offset)
+        draw_text(f"TZ: {force_torque[5]:.2f} Nm", y_offset)
+
+    # 时间同步
+    if time_diff is not None:
+        y_offset += 15
+        time_color = color_warning if time_diff > 0.1 else color_value
+        draw_text(f"Time Diff: {time_diff*1000:.1f} ms", y_offset, time_color)
+
+    return img
 
 
 def smooth_motion_planner(robot, target_xyz, target_gripper, curr_xyz, curr_gripper,
@@ -229,6 +338,10 @@ def main():
             cv2.namedWindow('UR10 Diffusion Policy - Current + 3 Predicted Frames', cv2.WINDOW_NORMAL)
             cv2.resizeWindow('UR10 Diffusion Policy - Current + 3 Predicted Frames', 1400, 400)
 
+            # 调试信息窗口
+            cv2.namedWindow('Debug Info', cv2.WINDOW_NORMAL)
+            cv2.resizeWindow('Debug Info', 600, 800)
+
             for step in range(CONFIG['task']['max_steps']):
                 print(f"\n--- Step {step + 1}/{CONFIG['task']['max_steps']} ---")
 
@@ -276,32 +389,49 @@ def main():
                 if key == ord('q'):
                     print("User requested quit.")
                     break
-                
-                # Extract target from agent's prediction (使用第2帧，和仿真一致)
+
+                # Extract target from agent's prediction (使用第1帧)
                 # Use default action_scale if not present in checkpoint
                 action_scale = getattr(agent.args, 'action_scale', 1.0)
 
-                # 将 (1, 1, 12) reshape 成 (3, 4)，然后取第2帧
+                # 将 (1, 1, 12) reshape 成 (3, 4)，然后取第1帧
                 action_steps = getattr(agent.args, 'action_steps', 3)
                 action_dim = getattr(agent.args, 'action_dim', 4)
                 a_seq = sample_a.reshape(action_steps, action_dim)
 
-                target = a_seq[1] / action_scale  # 第2帧 (索引1)
+                target = a_seq[0] / action_scale  # 第1帧 (索引0)
                 target_xyz, target_gripper = target[:3], float(target[3])
 
                 # Note: Model outputs are already in robot base frame (xyz, gripper)
                 # No camera_to_base transformation needed
 
                 # Apply gripper threshold (clamp) based on training logic
-                # During training: gripper < threshold → close, gripper >= threshold → open
-                # This matches the motion_planner logic in run_metaworld.py
-                gripper_threshold = CONFIG['task'].get('gripper_threshold', 0.75)
+                # Training data encoding: 0=open, 1=closed
+                # Robot API encoding: 1.0=open, 0.0=closed
+                # Need to INVERT: robot_gripper = 1.0 - model_gripper
+                gripper_threshold = CONFIG['task'].get('gripper_threshold', 0.8)
                 if target_gripper < gripper_threshold:
-                    target_gripper = 0.0  # Fully closed
+                    target_gripper = 1.0  # Model says open → robot needs 1.0
                 else:
-                    target_gripper = 1.0  # Fully open
+                    target_gripper = 0.0  # Model says closed → robot needs 0.0
 
-                print(f"Gripper: model_output={target[3]:.3f} → clamped={target_gripper:.1f} (threshold={gripper_threshold})")
+                print(f"Gripper: model_output={target[3]:.3f} → robot_cmd={target_gripper:.1f} (threshold={gripper_threshold})")
+
+                # 显示调试信息窗口
+                debug_img = create_debug_image(
+                    step=step + 1,
+                    max_steps=CONFIG['task']['max_steps'],
+                    current_pose=current_pose,
+                    current_gripper=current_gripper,
+                    target_xyz=target_xyz,
+                    target_gripper=target_gripper,
+                    force_torque=force_torque,
+                    time_diff=time_diff,
+                    action_output=target[3],
+                    gripper_threshold=gripper_threshold
+                )
+                cv2.imshow('Debug Info', debug_img)
+                cv2.waitKey(1)
 
                 # Combine with orientation from current pose to form target pose
                 target_pose = np.concatenate([target_xyz, current_pose[3:]])
@@ -313,17 +443,12 @@ def main():
                     time.sleep(0.1)
                     continue
 
-                # e. Execution: 使用平滑运动规划器（类似仿真环境）
-                print(f"开始平滑移动到目标位置...")
-                smooth_motion_planner(
-                    robot=robot,
-                    target_xyz=target_xyz,
-                    target_gripper=target_gripper,
-                    curr_xyz=current_pose[:3],
-                    curr_gripper=current_gripper,
-                    verbose=True
-                )
-                print("平滑移动完成\n")
+                # e. Execution: 直接移动到目标
+                print(f"移动到目标位置...")
+                target_pose = np.concatenate([target_xyz, current_pose[3:]])
+                robot.move_to_pose_sync(target_pose, timeout=3.0)
+                robot.set_gripper(target_gripper)
+                print(f"移动完成，夹爪设置: {target_gripper}\n")
 
     except KeyboardInterrupt:
         print("\nKeyboard interrupt detected. Shutting down.")
