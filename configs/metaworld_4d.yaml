@@ -31,10 +31,10 @@ training:
   adam_beta2: 0.999     # AdamW beta2 parameter
 
   # Learning Rate Scheduler Settings
-  use_lr_scheduler: true       # 关闭调度，学习率保持常数
-  scheduler_type: "constant"
+  use_lr_scheduler: true       # Enable cosine decay
+  scheduler_type: "cosine"
   warmup_steps: 8000
-  min_lr_ratio: 1.0
+  min_lr_ratio: 0.01           # Decay to 1% of initial LR
 
   # Logging and Checkpointing
   log_every: 100
@@ -57,7 +57,7 @@ components:
 
   # Initialization
   dit_init: null
-  rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/best_action_loss.pt"
+  rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/0030000.pt"
 
   # Attention
   attn_mask: false

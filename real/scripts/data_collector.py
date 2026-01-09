@@ -218,19 +218,79 @@ class DataCollector:
         else:
             print("No episodes to delete.")
 
-    def _draw_visualization(self, image, is_recording, episode_len, episode_count, robot_state, vel_cmd, stats):
+    def _draw_visualization(self, image, is_recording, episode_len, episode_count, robot_state, vel_cmd, stats, cam_data=None, action=None, timestamps=None):
         vis_img = image.copy(); h, w, _ = vis_img.shape
         status_text = f"REC: {episode_len} steps" if is_recording else f"PAUSED ({episode_len} in buffer)"
         status_color = (0, 0, 255) if is_recording else (128, 128, 128)
         cv2.circle(vis_img, (30, 30), 15, status_color, -1)
         cv2.putText(vis_img, status_text, (60, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, status_color, 2)
         cv2.putText(vis_img, f"Episodes: {episode_count}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+
+        # 左侧列：机器人当前状态 (STATE - 实际位置)
         if robot_state:
-            pose, gripper = robot_state['pose'], robot_state['gripper_state']
-            text_lines = [f"TCP: [{pose[0]:.3f}, {pose[1]:.3f}, {pose[2]:.3f}]", f"Vel: [{vel_cmd[0]:.2f}, {vel_cmd[1]:.2f}, {vel_cmd[2]:.2f}]",
-                          f"Gripper: {'OPEN' if gripper > 0.5 else 'CLOSED'} ({gripper:.2f})", f"Align: {stats['frames_aligned']} ok, {stats['frames_skipped_align']} skip"]
+            pose = robot_state['pose']  # 当前位置和姿态
+            gripper = robot_state['gripper_state']  # 当前夹爪状态 (0或1)
+            ft = robot_state['force_torque']
+            text_lines = [
+                f"=== STATE (Current) ===",
+                f"Pos: [{pose[0]:7.3f}, {pose[1]:7.3f}, {pose[2]:7.3f}]",
+                f"Rot: [{pose[3]:7.3f}, {pose[4]:7.3f}, {pose[5]:7.3f}]",
+                f"Gripper: {int(round(gripper))} ({'OPEN' if gripper > 0.5 else 'CLOSED'})",
+                f"Force: [{ft[0]:6.1f}, {ft[1]:6.1f}, {ft[2]:6.1f}]",
+                f"Torque: [{ft[3]:6.1f}, {ft[4]:6.1f}, {ft[5]:6.1f}]",
+            ]
             for i, line in enumerate(text_lines):
-                cv2.putText(vis_img, line, (20, h - 120 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                cv2.putText(vis_img, line, (10, 110 + i * 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+
+        # 右侧列：动作命令 (CMD - 目标速度/夹爪)
+        if action is not None:
+            lin_vel_cmd = action[:3]  # 线速度命令
+            ang_vel_cmd = action[3:6]  # 角速度命令
+            grip_cmd = action[6]  # 夹爪命令 (0或1)
+            text_lines = [
+                f"=== CMD (Target) ===",
+                f"LinVel: [{lin_vel_cmd[0]:6.2f}, {lin_vel_cmd[1]:6.2f}, {lin_vel_cmd[2]:6.2f}]",
+                f"AngVel: [{ang_vel_cmd[0]:6.2f}, {ang_vel_cmd[1]:6.2f}, {ang_vel_cmd[2]:6.2f}]",
+                f"GripCmd: {int(round(grip_cmd))} ({'OPEN' if grip_cmd > 0.5 else 'CLOSED'})",
+            ]
+            for i, line in enumerate(text_lines):
+                cv2.putText(vis_img, line, (w // 2, 110 + i * 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+
+        # 底部左侧：相机数据
+        if cam_data:
+            cam_ts_hw = cam_data.get('cam_ts_hw', 0)
+            cam_ts_mono = cam_data.get('cam_ts_mono', 0)
+            cam_ts_recv = cam_data.get('cam_ts_recv', 0)
+            frame_id = cam_data.get('frame_id', -1)
+            color_space = cam_data.get('color_space', 'N/A')
+            text_lines = [
+                f"=== CAMERA ===",
+                f"Frame ID: {frame_id}",
+                f"ColorSp: {color_space}",
+                f"TS_HW:   {cam_ts_hw:.6f}",
+                f"TS_MONO: {cam_ts_mono:.6f}",
+                f"TS_RECV: {cam_ts_recv:.6f}",
+            ]
+            for i, line in enumerate(text_lines):
+                cv2.putText(vis_img, line, (10, h - 145 + i * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 200, 100), 1)
+
+        # 底部右侧：时间戳和对齐统计
+        if timestamps:
+            robot_ts = timestamps.get('robot_ts', 0)
+            action_ts = timestamps.get('action_ts', 0)
+            time_diff = abs(cam_ts_mono - robot_ts) if cam_data else 0
+            text_lines = [
+                f"=== TIMESTAMPS ===",
+                f"Robot TS:  {robot_ts:.6f}",
+                f"Action TS: {action_ts:.6f}",
+                f"Cam-Robot dt: {time_diff*1000:.1f}ms",
+                f"",
+                f"=== ALIGN STATS ===",
+                f"OK: {stats['frames_aligned']} Skip: {stats['frames_skipped_align']}",
+            ]
+            for i, line in enumerate(text_lines):
+                cv2.putText(vis_img, line, (w // 2, h - 145 + i * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 255, 100), 1)
+
         return vis_img
 
     def run(self):
@@ -304,12 +364,14 @@ class DataCollector:
                     if robot_entry is None: time.sleep(0.01); continue
                     robot_ts, robot_state = robot_entry.timestamp, robot_entry.data
                     cam_data = {'image': np.zeros((CONFIG['camera']['height'], CONFIG['camera']['width'], 3), dtype=np.uint8), 'color_space': 'RGB', 'frame_id': -1, 'cam_ts_mono': robot_ts}
+                # 构建动作命令和时间戳（用于显示）
+                action = np.concatenate([lin_vel, ang_vel, [target_gripper_state]])
+                timestamps = {'robot_ts': robot_ts, 'action_ts': action_ts}
                 if is_recording:
-                    action = np.concatenate([lin_vel, ang_vel, [target_gripper_state]])
                     step_data = {'action': action, 'robot_state': robot_state, 'action_ts': action_ts, 'robot_ts': robot_ts, **cam_data}
                     episode_data.append(step_data)
                     self.stats['frames_aligned'] += 1
-                vis_img = self._draw_visualization(cam_data['image'], is_recording, len(episode_data), self.episode_count, robot_state, lin_vel, self.stats)
+                vis_img = self._draw_visualization(cam_data['image'], is_recording, len(episode_data), self.episode_count, robot_state, lin_vel, self.stats, cam_data, action, timestamps)
                 cv2.imshow(win_name, vis_img)
                 if cv2.waitKey(1) & 0xFF == 27: break
                 loop_elapsed = time.monotonic() - loop_start_ts
