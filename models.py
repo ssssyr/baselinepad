@@ -752,8 +752,17 @@ class DiT(nn.Module):
             if not stats:
                 continue
             for key, val in stats.items():
-                sums[key] = sums.get(key, 0.0) + float(val)
-                counts[key] = counts.get(key, 0) + 1
+                # Skip tensor values (histograms, etc.) - these are handled separately in train_robot.py
+                if isinstance(val, torch.Tensor):
+                    continue
+                # Only process scalar values (int, float, or single-element tensors converted to float)
+                try:
+                    scalar_val = float(val)
+                    sums[key] = sums.get(key, 0.0) + scalar_val
+                    counts[key] = counts.get(key, 0) + 1
+                except (ValueError, TypeError):
+                    # Skip values that can't be converted to scalar
+                    continue
         if not sums:
             return None
         return {k: sums[k] / counts[k] for k in sums}

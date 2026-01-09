@@ -223,8 +223,8 @@ class DataCollector:
         status_text = f"REC: {episode_len} steps" if is_recording else f"PAUSED ({episode_len} in buffer)"
         status_color = (0, 0, 255) if is_recording else (128, 128, 128)
         cv2.circle(vis_img, (30, 30), 15, status_color, -1)
-        cv2.putText(vis_img, status_text, (60, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, status_color, 2)
-        cv2.putText(vis_img, f"Episodes: {episode_count}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+        cv2.putText(vis_img, status_text, (60, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, status_color, 3)
+        cv2.putText(vis_img, f"Episodes: {episode_count}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 3)
 
         # 左侧列：机器人当前状态 (STATE - 实际位置)
         if robot_state:
@@ -240,7 +240,7 @@ class DataCollector:
                 f"Torque: [{ft[3]:6.1f}, {ft[4]:6.1f}, {ft[5]:6.1f}]",
             ]
             for i, line in enumerate(text_lines):
-                cv2.putText(vis_img, line, (10, 110 + i * 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+                cv2.putText(vis_img, line, (10, 110 + i * 26), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
         # 右侧列：动作命令 (CMD - 目标速度/夹爪)
         if action is not None:
@@ -254,7 +254,7 @@ class DataCollector:
                 f"GripCmd: {int(round(grip_cmd))} ({'OPEN' if grip_cmd > 0.5 else 'CLOSED'})",
             ]
             for i, line in enumerate(text_lines):
-                cv2.putText(vis_img, line, (w // 2, 110 + i * 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+                cv2.putText(vis_img, line, (w // 2, 110 + i * 26), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
         # 底部左侧：相机数据
         if cam_data:
@@ -272,7 +272,7 @@ class DataCollector:
                 f"TS_RECV: {cam_ts_recv:.6f}",
             ]
             for i, line in enumerate(text_lines):
-                cv2.putText(vis_img, line, (10, h - 145 + i * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 200, 100), 1)
+                cv2.putText(vis_img, line, (10, h - 160 + i * 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 200, 100), 2)
 
         # 底部右侧：时间戳和对齐统计
         if timestamps:
@@ -289,7 +289,7 @@ class DataCollector:
                 f"OK: {stats['frames_aligned']} Skip: {stats['frames_skipped_align']}",
             ]
             for i, line in enumerate(text_lines):
-                cv2.putText(vis_img, line, (w // 2, h - 145 + i * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 255, 100), 1)
+                cv2.putText(vis_img, line, (w // 2, h - 160 + i * 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 255, 100), 2)
 
         return vis_img
 
