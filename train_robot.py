@@ -721,10 +721,40 @@ def main(args):
                     elif "shared_experts" in name and "fc" in name:
                         grad_stats["grad_norm/shared_experts"] = grad_stats.get("grad_norm/shared_experts", 0.0) + grad_norm
 
-            # Calculate grad ratio if both heads present
+                    # E. Per-expert FFN gradients (key evidence for modality bias)
+                    # Pattern: blocks.X.mlp.experts.Y.fc1.weight or blocks.X.mlp.experts.Y.fc2.weight
+                    if ".experts." in name and "fc" in name:
+                        # Extract expert index: blocks.N.mlp.experts.Y.fc1.weight -> Y
+                        parts = name.split(".")
+                        if "experts" in parts:
+                            expert_idx_pos = parts.index("experts") + 1
+                            if expert_idx_pos < len(parts):
+                                expert_idx_str = parts[expert_idx_pos]
+                                if expert_idx_str.isdigit():
+                                    expert_idx = int(expert_idx_str)
+                                    grad_stats[f"grad_norm/expert_{expert_idx}"] = grad_stats.get(f"grad_norm/expert_{expert_idx}", 0.0) + grad_norm
+
+            # Calculate grad ratios
+            # A. Head ratio: action_head / rgb_head
             if "grad_norm/action_head" in grad_stats and "grad_norm/rgb_head" in grad_stats:
                 eps = 1e-8
                 grad_stats["grad_norm/ratio_head"] = grad_stats["grad_norm/action_head"] / (grad_stats["grad_norm/rgb_head"] + eps)
+
+            # B. Expert specialization ratio (key for proving modality bias works)
+            # Compare: How much MORE does expert_0 get compared to others?
+            if all(f"grad_norm/expert_{i}" in grad_stats for i in range(4)):
+                expert_grads = [grad_stats[f"grad_norm/expert_{i}"] for i in range(4)]
+                expert_0_vs_others = expert_grads[0] / (sum(expert_grads[1:]) / 3 + 1e-8)
+                grad_stats["grad_norm/expert_0_vs_others_ratio"] = expert_0_vs_others
+
+                # C. Expert 0 concentration: what % of total expert gradients goes to expert_0?
+                total_expert_grad = sum(expert_grads)
+                grad_stats["grad_norm/expert_0_concentration"] = expert_grads[0] / (total_expert_grad + 1e-8)
+
+                # D. RGB gradient spread (should be uniform across experts)
+                # Calculate coefficient of variation (std/mean) - lower = more uniform
+                expert_cv = np.std(expert_grads) / (np.mean(expert_grads) + 1e-8)
+                grad_stats["grad_norm/expert_cv"] = expert_cv
 
             # Accumulate grad stats
             for key in grad_stats:

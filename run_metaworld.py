@@ -319,14 +319,14 @@ def run_single_rollout(agent, task, selected_id, traj_idx, META_CONFIG, INSTRUCT
                     print(f"🧭 Full predicted action seq (xyzg per step):\n{np.array2string(a_seq, precision=3, floatmode='fixed')}")
                     print(f"🧭 Gripper seq: {np.array2string(a_seq[:,3], precision=3, floatmode='fixed')}, current gripper: {curr_gripper:.3f}")
 
-                target = a_seq[0] / agent.args.action_scale  # Use 1st frame (index 0)
+                target = a_seq[1] / agent.args.action_scale  # Use 2nd frame (index 1)
                 target_xyz, target_gripper = target[:3], float(target[3])
             else:
                 target = sample_a / agent.args.action_scale
                 target_xyz, target_gripper = target[0, 0, :3], float(target[0, 0, 3])
 
             if save_video:
-                print(f"🧭 Target used (step0 xyzg): {np.array2string(target_xyz, precision=3, floatmode='fixed')}, target_gripper: {target_gripper:.3f}")
+                print(f"🧭 Target used (step1 xyzg): {np.array2string(target_xyz, precision=3, floatmode='fixed')}, target_gripper: {target_gripper:.3f}")
 
             info, img = motion_planner(
                 target_xyz,
