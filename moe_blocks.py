@@ -350,8 +350,13 @@ class SparseMoeBlock(nn.Module):
                                 stats[f"{mod_name}/margin_mean"] = torch.tensor(0.0)
 
                 if stats:
-                    # ensure plain tensors detached
-                    self.last_routing_stats = {k: v.detach() for k, v in stats.items()}
+                    # ensure plain tensors detached (handle both tensor and scalar types)
+                    self.last_routing_stats = {}
+                    for k, v in stats.items():
+                        if isinstance(v, torch.Tensor):
+                            self.last_routing_stats[k] = v.detach()
+                        else:
+                            self.last_routing_stats[k] = v
         return output
 
     @torch.no_grad()

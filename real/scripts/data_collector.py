@@ -183,7 +183,7 @@ class DataCollector:
         for step in episode_data:
             for k, v in step.items():
                 if k == 'robot_state':
-                    data_dict['robot_pose'].append(v['pose']); data_dict['gripper_state'].append(v['gripper_state']); data_dict['force_torque'].append(v['force_torque'])
+                    data_dict['robot_pose'].append(v['pose']); data_dict['gripper_state'].append(int(round(v['gripper_state']))); data_dict['force_torque'].append(v['force_torque'])
                 elif k in data_dict: data_dict[k].append(v)
         for key, value in data_dict.items(): data_dict[key] = np.array(value)
         np.savez_compressed(filepath, **data_dict)
