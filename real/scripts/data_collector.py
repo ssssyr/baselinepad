@@ -23,6 +23,7 @@ import time
 import threading
 import json
 import shutil
+import multiprocessing
 from pathlib import Path
 from collections import deque
 from typing import Optional, Tuple, Dict, Any
@@ -30,14 +31,19 @@ import numpy as np
 import click
 import cv2
 
-# Add project root's parent to Python path to allow absolute imports
-project_root = Path(__file__).parent.parent.parent.absolute()
-sys.path.insert(0, str(project_root.parent))
+# Set multiprocessing start method to fork (inherits parent process permissions)
+multiprocessing.set_start_method('fork')
 
-from baselinepad.real.configs.ur10_config import CONFIG
-from baselinepad.real.hardware.camera_manager import CameraManager
-from baselinepad.real.hardware.ur10_manager import UR10Manager
-from baselinepad.real.scripts.gamepad_handler import GamepadHandler
+# Add project root to Python path to allow absolute imports
+project_root = Path(__file__).parent.parent.parent.absolute()
+sys.path.insert(0, str(project_root))
+# Add third_party directory for realsense_interface
+sys.path.insert(0, str(project_root / "real" / "third_party"))
+
+from real.configs.ur10_config import CONFIG
+from real.hardware.camera_manager import CameraManager
+from real.hardware.ur10_manager import UR10Manager
+from real.scripts.gamepad_handler import GamepadHandler
 
 
 # ==============================================================================

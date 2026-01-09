@@ -233,6 +233,7 @@ class DiTBlock(nn.Module):
         modality_bias_init=None,
         num_modalities=3,
         use_expert_adaln=False,
+        collect_stats=False,
         **block_kwargs,
     ):
         super().__init__()
@@ -265,6 +266,7 @@ class DiTBlock(nn.Module):
                 use_modality_bias=use_modality_bias,
                 modality_bias_init=modality_bias_init,
                 num_modalities=num_modalities,
+                collect_stats=collect_stats,
             )
         else:
             mlp_hidden_dim = int(hidden_size * mlp_ratio)
@@ -301,9 +303,12 @@ class DiTBlock(nn.Module):
             self.last_aux_loss = getattr(self.mlp, "last_aux_loss", None)
             # propagate lightweight routing stats (coverage/hit rate) up to the block for logging
             self.last_routing_stats = getattr(self.mlp, "last_routing_stats", None)
+            # store gate scores for analysis
+            self.last_gate_scores = self.mlp.get_gate_scores()
         else:
             self.last_aux_loss = None
             self.last_routing_stats = None
+            self.last_gate_scores = None
         return x
 
 
@@ -415,6 +420,7 @@ class DiT(nn.Module):
         self.modality_bias_strength_action = float(getattr(args, "modality_bias_strength_action", 0.0))
         self.modality_bias_strength_depth = float(getattr(args, "modality_bias_strength_depth", 0.0))
         self.use_expert_adaln = bool(getattr(args, "use_expert_adaln", False))
+        self.collect_stats = bool(getattr(args, "collect_stats", False))
         self.use_force = bool(getattr(args, "use_force", False))
         self.force_dim = int(getattr(args, "force_dim", 6))
         self.args.use_force = self.use_force
@@ -512,6 +518,7 @@ class DiT(nn.Module):
                 modality_bias_init=self.moe_modality_bias_init,
                 num_modalities=self.moe_num_modalities,
                 use_expert_adaln=self.use_expert_adaln,
+                collect_stats=self.collect_stats,
             )
         )
         self.blocks = nn.ModuleList(blocks)
@@ -750,6 +757,20 @@ class DiT(nn.Module):
         if not sums:
             return None
         return {k: sums[k] / counts[k] for k in sums}
+
+    def get_last_gate_scores(self):
+        """
+        Aggregate gate scores (logits before/after bias) across MoE blocks.
+        Returns a list of dicts with keys: 'logits', 'logits_before_bias', 'modality_ids'
+        """
+        if not self.use_moe:
+            return None
+        gate_scores = []
+        for block in self.blocks:
+            scores = getattr(block, "last_gate_scores", None)
+            if scores is not None:
+                gate_scores.append(scores)
+        return gate_scores if gate_scores else None
 
 
 #################################################################################

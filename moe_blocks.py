@@ -46,6 +46,7 @@ class MoEGate(nn.Module):
         else:
             self.modality_bias = None
         self.reset_parameters()
+        self.last_raw_scores = None  # Store raw logits for debugging/analysis
 
     def reset_parameters(self) -> None:
         init = torch.nn.init
@@ -56,6 +57,7 @@ class MoEGate(nn.Module):
         bsz, seq_len, hidden_dim = hidden_states.shape
         flat_states = hidden_states.reshape(-1, hidden_dim)
         logits = F.linear(flat_states, self.weight, None)
+        logits_before_bias = logits.clone() if self.training else None  # Save before bias for analysis
         flat_modality: Optional[torch.Tensor] = None
         if modality_ids is not None:
             flat_modality = modality_ids.reshape(-1)
@@ -63,6 +65,15 @@ class MoEGate(nn.Module):
             if flat_modality.numel() == flat_states.shape[0]:
                 bias = self.modality_bias.to(hidden_states.device)
                 logits = logits + bias[flat_modality]
+
+        # Store raw scores for analysis (detach to avoid memory leak)
+        if self.training:
+            with torch.no_grad():
+                self.last_raw_scores = {
+                    'logits': logits.detach().clone(),
+                    'logits_before_bias': logits_before_bias.detach().clone() if logits_before_bias is not None else None,
+                    'modality_ids': flat_modality.detach().clone() if flat_modality is not None else None,
+                }
         scores = None
         if self.scoring_func == "softmax":
             if (not self.training) and self.norm_topk_prob:
@@ -182,9 +193,12 @@ class SparseMoeBlock(nn.Module):
         use_modality_bias: bool = False,
         num_modalities: int = 3,
         modality_bias_init: Optional[torch.Tensor] = None,
+        collect_stats: bool = False,
     ):
         super().__init__()
+        self.num_experts = num_experts
         self.num_experts_per_tok = num_experts_per_tok
+        self.collect_stats = collect_stats
         intermediate_size = int(mlp_ratio * embed_dim)
         self.experts = nn.ModuleList(
             [
@@ -243,12 +257,7 @@ class SparseMoeBlock(nn.Module):
             self.last_aux_loss = None
             output = self.moe_infer(flat_states, flat_topk_idx, topk_weight.view(-1, 1)).view(*orig_shape)
 
-        # Optionally bypass MoE output for action tokens (modality_id == 1):
-        # keep their contribution only from the shared expert (dense path).
-        if modality_ids is not None:
-            action_mask = (modality_ids == 1).unsqueeze(-1)  # (B, T, 1)
-            output = output.masked_fill(action_mask, 0.0)
-
+        # All tokens (including action) now go through normal MoE routing
         if self.shared_experts is not None:
             output = output + self.shared_experts(identity)
 
@@ -256,39 +265,89 @@ class SparseMoeBlock(nn.Module):
         self.last_routing_stats = None
         if modality_ids is not None:
             with torch.no_grad():
-                stats = {}
                 flat_mod = modality_ids.reshape(-1)
                 flat_topk = topk_idx.view(-1, self.num_experts_per_tok)
                 flat_weight = topk_weight.view(-1, self.num_experts_per_tok)
-                num_experts = len(self.experts)
+                num_experts = self.num_experts
 
-                # Action modality (id=1): hit rate on expert0, coverage, avg weight on expert0
-                action_mask = flat_mod == 1
-                if action_mask.any():
-                    a_topk = flat_topk[action_mask]
+                # Modality names for logging
+                modality_names = {0: "rgb", 1: "action", 2: "depth", 3: "force"}
+
+                # Basic stats (always collected for compatibility)
+                stats = {}
+                if flat_mod[flat_mod == 1].any():
+                    a_topk = flat_topk[flat_mod == 1]
                     hit = (a_topk == 0).any(dim=1).float().mean()
                     counts = torch.bincount(a_topk.view(-1), minlength=num_experts)
                     coverage = (counts > 0).float().mean()
                     stats["action_hit_rate"] = hit
                     stats["action_coverage"] = coverage
-                    a_weight = flat_weight[action_mask]
+                    a_weight = flat_weight[flat_mod == 1]
                     hit_weight = a_weight[a_topk == 0]
                     if hit_weight.numel() > 0:
                         stats["action_expert0_weight"] = hit_weight.mean()
 
-                # RGB modality (id=0): coverage
-                rgb_mask = flat_mod == 0
-                if rgb_mask.any():
-                    rgb_topk = flat_topk[rgb_mask]
+                if flat_mod[flat_mod == 0].any():
+                    rgb_topk = flat_topk[flat_mod == 0]
                     counts = torch.bincount(rgb_topk.view(-1), minlength=num_experts)
                     stats["rgb_coverage"] = (counts > 0).float().mean()
 
-                # Depth modality (id=2): coverage
-                depth_mask = flat_mod == 2
-                if depth_mask.any():
-                    depth_topk = flat_topk[depth_mask]
+                if flat_mod[flat_mod == 2].any():
+                    depth_topk = flat_topk[flat_mod == 2]
                     counts = torch.bincount(depth_topk.view(-1), minlength=num_experts)
                     stats["depth_coverage"] = (counts > 0).float().mean()
+
+                # Detailed stats (only when collect_stats=True)
+                if self.collect_stats:
+                    # Get routing probabilities from gate (logits -> softmax)
+                    gate_scores = self.gate.last_raw_scores
+                    if gate_scores is not None and gate_scores.get('logits') is not None:
+                        all_logits = gate_scores['logits']  # (total_tokens, num_experts)
+                        all_probs = torch.softmax(all_logits, dim=-1)
+
+                        # For each modality, compute detailed stats
+                        for mod_id in sorted(set(flat_mod.cpu().tolist())):
+                            mod_name = modality_names.get(mod_id, f"mod_{mod_id}")
+                            mask = flat_mod == mod_id
+                            if not mask.any():
+                                continue
+
+                            mod_probs = all_probs[mask]  # (num_mod_tokens, num_experts)
+                            mod_topk = flat_topk[mask]     # (num_mod_tokens, top_k)
+                            mod_weight = flat_weight[mask] # (num_mod_tokens, top_k)
+                            num_mod_tokens = mask.sum().item()
+
+                            # Token count
+                            stats[f"{mod_name}/token_count"] = num_mod_tokens
+
+                            # Top-1 expert histogram (count per expert)
+                            top1_indices = mod_topk[:, 0]  # (num_mod_tokens,)
+                            top1_hist = torch.bincount(top1_indices, minlength=num_experts).float()
+                            stats[f"{mod_name}/top1_hist"] = top1_hist  # Will be normalized after all-reduce
+
+                            # Top-k expert histogram (count per expert, expanded)
+                            topk_expanded = mod_topk.view(-1)  # (num_mod_tokens * top_k,)
+                            topk_hist = torch.bincount(topk_expanded, minlength=num_experts).float()
+                            stats[f"{mod_name}/topk_hist"] = topk_hist  # Will be normalized after all-reduce
+
+                            # Routing entropy (normalized by log(num_experts))
+                            # H = -sum(p * log(p)), normalized = H / log(E)
+                            entropy = -(mod_probs * torch.log(mod_probs + 1e-10)).sum(dim=-1)
+                            normalized_entropy = entropy / torch.log(torch.tensor(num_experts, dtype=torch.float32))
+                            stats[f"{mod_name}/entropy"] = normalized_entropy.mean()
+
+                            # Router confidence: top1 probability mean and margin
+                            top1_probs = mod_probs.max(dim=-1)[0]  # (num_mod_tokens,)
+                            stats[f"{mod_name}/top1_prob_mean"] = top1_probs.mean()
+
+                            # Margin = E[p_top1 - p_top2] (only meaningful if top_k >= 2)
+                            if self.num_experts_per_tok >= 2:
+                                sorted_probs, _ = torch.sort(mod_probs, dim=-1, descending=True)
+                                margin = (sorted_probs[:, 0] - sorted_probs[:, 1]).mean()
+                                stats[f"{mod_name}/margin_mean"] = margin
+                            else:
+                                # top_k=1时，margin无意义（只有一个选择），设为0或跳过
+                                stats[f"{mod_name}/margin_mean"] = torch.tensor(0.0)
 
                 if stats:
                     # ensure plain tensors detached
@@ -319,3 +378,7 @@ class SparseMoeBlock(nn.Module):
                 reduce="sum",
             )
         return expert_cache
+
+    def get_gate_scores(self):
+        """Get the last gate scores for analysis/debugging."""
+        return getattr(self.gate, "last_raw_scores", None)

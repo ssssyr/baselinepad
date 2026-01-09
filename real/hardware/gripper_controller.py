@@ -5,8 +5,7 @@ import time
 import numpy as np
 try:
     from pymodbus.client import ModbusTcpClient as ModbusClient
-    from pymodbus.constants import Endian
-    from pymodbus.payload import BinaryPayloadDecoder
+    import struct
     MODBUS_AVAILABLE = True
 except ImportError:
     MODBUS_AVAILABLE = False
@@ -53,7 +52,7 @@ class GripperController:
                     # 先设置连接状态
                     self.connected = True
                     # 测试读取一个寄存器以验证连接
-                    test_result = self.modbus.read_holding_registers(280, count=1, slave=self.unit)
+                    test_result = self.modbus.read_holding_registers(280, count=1, device_id=self.unit)
                     if test_result.isError():
                         print(f"警告: 连接成功但读取测试失败: {test_result}")
                         raise ConnectionError(f"无法读取夹爪数据: {test_result}")
@@ -89,23 +88,23 @@ class GripperController:
         
         try:
             # 读取夹爪宽度
-            result = self.modbus.read_holding_registers(280, count=1, slave=self.unit)
+            result = self.modbus.read_holding_registers(280, count=1, device_id=self.unit)
             if not result.isError():
                 self.current_width = self._validate_int16(result) / 10
             
             # 读取忙碌状态
-            result = self.modbus.read_holding_registers(281, count=1, slave=self.unit)
+            result = self.modbus.read_holding_registers(281, count=1, device_id=self.unit)
             if not result.isError():
                 self.gripper_busy = result.registers[0] if result.registers else 0
             
             # 读取抓取检测
-            result = self.modbus.read_holding_registers(282, count=1, slave=self.unit)
+            result = self.modbus.read_holding_registers(282, count=1, device_id=self.unit)
             if not result.isError():
                 self.grip_detected = result.registers[0] if result.registers else 0
             
             # 读取左力传感器
             for i in range(6):
-                result = self.modbus.read_holding_registers(259+i, count=1, slave=self.unit)
+                result = self.modbus.read_holding_registers(259+i, count=1, device_id=self.unit)
                 if not result.isError():
                     if i < 3:
                         self.left_ft_sensor[i] = self._validate_int16(result) / 10
@@ -114,7 +113,7 @@ class GripperController:
             
             # 读取右力传感器
             for i in range(6):
-                result = self.modbus.read_holding_registers(268+i, count=1, slave=self.unit)
+                result = self.modbus.read_holding_registers(268+i, count=1, device_id=self.unit)
                 if not result.isError():
                     if i < 3:
                         self.right_ft_sensor[i] = self._validate_int16(result) / 10
@@ -155,17 +154,17 @@ class GripperController:
         
         try:
             # 发送控制命令
-            result1 = self.modbus.write_register(3, int(target_width_mm * 10), slave=self.unit)
+            result1 = self.modbus.write_register(3, int(target_width_mm * 10), device_id=self.unit)
             if result1.isError():
                 print(f"发送夹爪宽度命令失败: {result1}")
                 return False
             
-            result2 = self.modbus.write_register(2, int(self.max_force * 10), slave=self.unit)
+            result2 = self.modbus.write_register(2, int(self.max_force * 10), device_id=self.unit)
             if result2.isError():
                 print(f"发送夹爪力度命令失败: {result2}")
                 return False
             
-            result3 = self.modbus.write_register(4, 1, slave=self.unit)  # 激活运动
+            result3 = self.modbus.write_register(4, 1, device_id=self.unit)  # 激活运动
             if result3.isError():
                 print(f"激活夹爪运动失败: {result3}")
                 return False
@@ -182,7 +181,7 @@ class GripperController:
         """停止夹爪运动"""
         if self.connected:
             try:
-                result = self.modbus.write_register(4, 0, slave=self.unit)
+                result = self.modbus.write_register(4, 0, device_id=self.unit)
                 if result.isError():
                     print(f"停止夹爪失败: {result}")
                     return False
@@ -229,17 +228,17 @@ class GripperController:
         }
     
     def _validate_int16(self, instance):
-        """验证并解码16位整数"""
+        """验证并解码16位整数（兼容pymodbus 3.x）"""
         if instance is None or instance.isError() or not instance.registers:
             return 0.0
-        
+
         try:
-            decoder = BinaryPayloadDecoder.fromRegisters(
-                instance.registers,
-                byteorder=Endian.Big, 
-                wordorder=Endian.Little
-            )
-            return float('{0:.2f}'.format(decoder.decode_16bit_int()))
+            # pymodbus 3.x: 直接获取寄存器值并转换为有符号16位整数
+            value = instance.registers[0]
+            # 转换为有符号16位整数（处理负值）
+            if value > 32767:
+                value = value - 65536
+            return float(value)
         except:
             return 0.0
     

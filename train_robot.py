@@ -281,7 +281,63 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
             if b2 is not None:
                 state_dict[f"{prefix}.experts.{e_idx}.fc2.bias"] = b2
         if verbose and experts is not None:
-            print(f"✓ Seeded {len(experts)} experts from dense FFN for block {idx} (noise std={noise_std})")
+            print(f"✓ Seeded {len(experts)} experts from dense FFN for block {idx} (noise stdd={noise_std})")
+
+
+#################################################################################
+#                             Gate Scores Logging                                #
+#################################################################################
+
+def save_gate_scores(gate_scores_list, step, save_dir, modality_bias_strength=None):
+    """
+    Save gate scores to disk for analysis.
+
+    Args:
+        gate_scores_list: List of dicts from different MoE blocks
+        step: Current training step
+        save_dir: Directory to save the data
+        modality_bias_strength: Current modality bias strength (for metadata)
+    """
+    if gate_scores_list is None or len(gate_scores_list) == 0:
+        return
+
+    try:
+        import json
+
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"gate_scores_step_{step}.json")
+
+        # Convert tensors to lists for JSON serialization
+        serializable_data = []
+        for block_idx, block_data in enumerate(gate_scores_list):
+            if block_data is None:
+                continue
+
+            block_entry = {
+                'block_idx': block_idx,
+                'logits': block_data.get('logits').cpu().tolist() if block_data.get('logits') is not None else None,
+                'logits_before_bias': block_data.get('logits_before_bias').cpu().tolist() if block_data.get('logits_before_bias') is not None else None,
+                'modality_ids': block_data.get('modality_ids').cpu().tolist() if block_data.get('modality_ids') is not None else None,
+            }
+            serializable_data.append(block_entry)
+
+        metadata = {
+            'step': step,
+            'num_blocks': len(serializable_data),
+            'modality_bias_strength': modality_bias_strength,
+        }
+
+        output = {
+            'metadata': metadata,
+            'blocks': serializable_data
+        }
+
+        with open(save_path, 'w') as f:
+            json.dump(output, f, indent=2)
+
+        print(f"✓ Saved gate scores to {save_path}")
+    except Exception as e:
+        print(f"⚠ Failed to save gate scores: {e}")
 
 
 #################################################################################
@@ -603,43 +659,77 @@ def main(args):
                 aux_tensor = accelerator.unwrap_model(model).get_last_aux_loss()
                 if aux_tensor is not None:
                     moe_aux_metric = aux_tensor.item()
+
+                # Enhanced routing stats collection with per-layer tracking
                 routing_stats = accelerator.unwrap_model(model).get_last_routing_stats()
                 if routing_stats is not None:
                     for k, v in routing_stats.items():
-                        routing_sums[k] = routing_sums.get(k, 0.0) + float(v)
-                        routing_counts[k] = routing_counts.get(k, 0) + 1
+                        # Handle tensor values (for multi-GPU reduction later)
+                        if isinstance(v, torch.Tensor):
+                            if k not in routing_sums:
+                                routing_sums[k] = []
+                                routing_counts[k] = 0
+                            routing_sums[k].append(v.detach().cpu())
+                            routing_counts[k] += 1
+                        else:
+                            # Handle scalar values
+                            routing_sums[k] = routing_sums.get(k, 0.0) + float(v)
+                            routing_counts[k] = routing_counts.get(k, 0) + 1
+
+                # Save gate scores periodically (every 1000 steps) for analysis
+                if accelerator.is_main_process and train_steps > 0 and train_steps % 1000 == 0:
+                    gate_scores = accelerator.unwrap_model(model).get_last_gate_scores()
+                    if gate_scores is not None:
+                        gate_scores_dir = os.path.join(experiment_dir, "gate_scores_analysis")
+                        modality_bias = getattr(args, "modality_bias_strength_action", None)
+                        save_gate_scores(gate_scores, train_steps, gate_scores_dir, modality_bias)
 
             opt.zero_grad()
             accelerator.backward(loss)
 
-            # === 记录梯度范数（按模态分组）===
+            # === Enhanced gradient norm monitoring ===
             grad_stats = {}
-            if getattr(args, "use_expert_adaln", False):
-                # 获取模型（考虑 DDP 包装）
-                model_for_grad = accelerator.unwrap_model(model)
-                for name, param in model_for_grad.named_parameters():
-                    if param.grad is not None:
-                        grad_norm = param.grad.norm().item()
-                        # 按 modality 分组统计 expert LayerNorm 梯度
-                        # norm1_experts.N / norm2_experts.N 中的 N 是 modality id
-                        if "norm1_experts" in name:
-                            modality_id = name.split(".")[2]  # norm1_experts.{id}.weight
-                            modality_name = {0: "rgb", 1: "action", 2: "depth", 3: "force"}.get(int(modality_id), f"mod_{modality_id}")
-                            key = f"grad_norm/norm1_{modality_name}"
-                            grad_stats[key] = grad_stats.get(key, 0.0) + grad_norm
-                        elif "norm2_experts" in name:
-                            modality_id = name.split(".")[2]
-                            modality_name = {0: "rgb", 1: "action", 2: "depth", 3: "force"}.get(int(modality_id), f"mod_{modality_id}")
-                            key = f"grad_norm/norm2_{modality_name}"
-                            grad_stats[key] = grad_stats.get(key, 0.0) + grad_norm
-                        elif "norm" in name and "expert" not in name:
-                            # 共享 LayerNorm（未使用 expert adaln 时）
-                            grad_stats["grad_norm/shared_norm"] = grad_stats.get("grad_norm/shared_norm", 0.0) + grad_norm
+            model_for_grad = accelerator.unwrap_model(model)
+            collect_detailed_grad = getattr(args, "collect_stats", False)
 
-                # 累积统计用于平均
-                for key in grad_stats:
-                    grad_sums[key] = grad_sums.get(key, 0.0) + grad_stats[key]
-                    grad_counts[key] = grad_counts.get(key, 0) + 1
+            for name, param in model_for_grad.named_parameters():
+                if param.grad is not None:
+                    grad_norm = param.grad.norm().item()
+
+                    # A. Action head vs RGB head gradient norms
+                    if "final_layer.a_linear" in name or "final_layer.a_head" in name:
+                        grad_stats["grad_norm/action_head"] = grad_norm
+                    elif "final_layer.linear" in name and "a_linear" not in name:
+                        # RGB head (final_layer.linear)
+                        grad_stats["grad_norm/rgb_head"] = grad_norm
+
+                    # B. Router (MoE gate) gradient norms
+                    elif "gate.weight" in name or "gate.modality_bias" in name:
+                        grad_stats["grad_norm/router"] = grad_stats.get("grad_norm/router", 0.0) + grad_norm
+
+                    # C. Expert AdaLN gradients (per modality)
+                    if "norm1_experts" in name:
+                        modality_id = name.split(".")[2]
+                        modality_name = {0: "rgb", 1: "action", 2: "depth", 3: "force"}.get(int(modality_id), f"mod_{modality_id}")
+                        grad_stats[f"grad_norm/adaln_norm1_{modality_name}"] = grad_norm
+                    elif "norm2_experts" in name:
+                        modality_id = name.split(".")[2]
+                        modality_name = {0: "rgb", 1: "action", 2: "depth", 3: "force"}.get(int(modality_id), f"mod_{modality_id}")
+                        grad_stats[f"grad_norm/adaln_norm2_{modality_name}"] = grad_norm
+
+                    # D. Shared expert FFN gradients (for comparison)
+                    elif "shared_experts" in name and "fc" in name:
+                        grad_stats["grad_norm/shared_experts"] = grad_stats.get("grad_norm/shared_experts", 0.0) + grad_norm
+
+            # Calculate grad ratio if both heads present
+            if "grad_norm/action_head" in grad_stats and "grad_norm/rgb_head" in grad_stats:
+                eps = 1e-8
+                grad_stats["grad_norm/ratio_head"] = grad_stats["grad_norm/action_head"] / (grad_stats["grad_norm/rgb_head"] + eps)
+
+            # Accumulate grad stats
+            for key in grad_stats:
+                grad_sums[key] = grad_sums.get(key, 0.0) + grad_stats[key]
+                grad_counts[key] = grad_counts.get(key, 0) + 1
             # =============================================
 
             opt.step()
@@ -671,11 +761,47 @@ def main(args):
                 avg_loss_a = (running_loss_a / log_steps) if log_steps > 0 else 0.0
                 avg_loss_d = (running_loss_d / log_steps) if log_steps > 0 else 0.0
                 avg_moe_aux = (running_moe_aux / log_steps) if (log_steps > 0 and getattr(args, "use_moe", False)) else 0.0
+
+                # Enhanced routing stats aggregation with multi-GPU support
                 routing_avg = {}
                 for k in routing_sums:
                     cnt = routing_counts.get(k, 0)
-                    if cnt > 0:
+                    if cnt <= 0:
+                        continue
+
+                    # Handle list of tensors (histograms) - need multi-GPU reduction
+                    if isinstance(routing_sums[k], list):
+                        # Stack tensors and sum across GPUs
+                        tensor_list = routing_sums[k]
+                        if tensor_list:
+                            stacked = torch.stack(tensor_list).sum(dim=0)  # (num_experts,)
+                            # Note: For proper multi-GPU, we'd need all_reduce here
+                            # For now, normalize by local count
+                            routing_avg[k] = stacked.tolist()
+                        else:
+                            continue
+                    else:
+                        # Handle scalar values
                         routing_avg[k] = routing_sums[k] / cnt
+
+                # Normalize histograms by token count
+                for k in list(routing_avg.keys()):
+                    if "/top1_hist" in k or "/topk_hist" in k:
+                        modality = k.split("/")[0]  # e.g., "action"
+                        token_count_key = f"{modality}/token_count"
+                        if token_count_key in routing_avg and isinstance(routing_avg[k], list):
+                            # Normalize histogram by total tokens
+                            total_tokens = routing_avg[token_count_key]
+                            if total_tokens > 0:
+                                hist = routing_avg[k]
+                                if "/top1_hist" in k:
+                                    # Divide by token count
+                                    routing_avg[k] = [h / total_tokens for h in hist]
+                                elif "/topk_hist" in k:
+                                    # Divide by token_count * top_k
+                                    top_k = getattr(args, "moe_top_k", 2)
+                                    routing_avg[k] = [h / (total_tokens * top_k) for h in hist]
+
                 grad_norm_avg = {}
                 for k in grad_sums:
                     cnt = grad_counts.get(k, 0)
@@ -719,11 +845,36 @@ def main(args):
                             log_payload["train/loss_depth"] = avg_loss_d
                         if getattr(args, "use_moe", False):
                             log_payload["train/moe_aux_loss"] = avg_moe_aux
+
+                            # Enhanced routing stats with better naming
                             for k, v in routing_avg.items():
-                                log_payload[f"moe/{k}"] = v
-                        # 添加梯度范数到 wandb
+                                # Skip histograms (handle separately)
+                                if "/top1_hist" in k or "/topk_hist" in k:
+                                    continue
+                                # Use clearer naming convention
+                                if "/" in k:
+                                    parts = k.split("/")
+                                    if len(parts) == 2:
+                                        modality, metric = parts
+                                        log_payload[f"routing/{modality}/{metric}"] = v
+                                else:
+                                    log_payload[f"moe/{k}"] = v
+
+                            # Log histograms separately for plotting
+                            for k, v in routing_avg.items():
+                                if "/top1_hist" in k:
+                                    modality = k.split("/")[0]
+                                    for expert_idx, prob in enumerate(v):
+                                        log_payload[f"routing/{modality}/top1_hist/e{expert_idx}"] = prob
+                                elif "/topk_hist" in k:
+                                    modality = k.split("/")[0]
+                                    for expert_idx, prob in enumerate(v):
+                                        log_payload[f"routing/{modality}/topk_hist/e{expert_idx}"] = prob
+
+                        # Enhanced gradient norm logging with better naming
                         for k, v in grad_norm_avg.items():
-                            log_payload[k] = v
+                            log_payload[f"grad/{k}"] = v
+
                         wandb.log(log_payload, step=train_steps)
 
                 running_loss = 0.0
