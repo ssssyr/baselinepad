@@ -4,4 +4,25 @@ samples
 metaworld_video
 rollout_videos
 output
-ckpt
+ckptreal/data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# IDE
+.vscode/
+.idea/
+
+# Data
+real/data/
+*.ckpt
+*.pt
+*.pth
+
+# Logs
+logs/
+*.log
+wandb/

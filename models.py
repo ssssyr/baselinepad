@@ -234,6 +234,7 @@ class DiTBlock(nn.Module):
         num_modalities=3,
         use_expert_adaln=False,
         collect_stats=False,
+        layer_idx=-1,  # Add layer index for gradient tracking
         **block_kwargs,
     ):
         super().__init__()
@@ -267,6 +268,7 @@ class DiTBlock(nn.Module):
                 modality_bias_init=modality_bias_init,
                 num_modalities=num_modalities,
                 collect_stats=collect_stats,
+                layer_idx=layer_idx,  # Pass layer index for gradient tracking
             )
         else:
             mlp_hidden_dim = int(hidden_size * mlp_ratio)
@@ -519,6 +521,7 @@ class DiT(nn.Module):
                 num_modalities=self.moe_num_modalities,
                 use_expert_adaln=self.use_expert_adaln,
                 collect_stats=self.collect_stats,
+                layer_idx=layer_idx,  # Pass layer index for gradient tracking
             )
         )
         self.blocks = nn.ModuleList(blocks)

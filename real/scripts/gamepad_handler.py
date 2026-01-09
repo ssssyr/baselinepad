@@ -101,6 +101,27 @@ class GamepadHandler:
         """检测按钮是否在这一帧刚被按下"""
         return self.button_states.get(button_id) and not self.prev_button_states.get(button_id)
 
+    def rumble(self, low_frequency=0.5, high_frequency=0.5, duration_ms=200):
+        """
+        触发手柄振动
+
+        Args:
+            low_frequency: 低频电机强度 (0.0-1.0)
+            high_frequency: 高频电机强度 (0.0-1.0)
+            duration_ms: 振动持续时间（毫秒）
+        """
+        try:
+            # pygame 2.0+ 支持振动
+            if hasattr(self.joystick, 'rumble'):
+                self.joystick.rumble(low_frequency, high_frequency, duration_ms)
+                return True
+            else:
+                print("当前 pygame 版本不支持振动功能")
+                return False
+        except Exception as e:
+            print(f"振动触发失败: {e}")
+            return False
+
     def cleanup(self):
         """清理 pygame 资源"""
         pygame.quit()

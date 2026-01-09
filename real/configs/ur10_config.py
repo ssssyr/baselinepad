@@ -46,8 +46,8 @@ CONFIG = {
     # ---------------------------
     "gamepad": {
         "deadzone": 0.15,
-        "linear_speed_max": 0.12,
-        "angular_speed_max": 0.25,
+        "linear_speed_max": 0.06,
+        "angular_speed_max": 0.12,
         "axis_map": {
             "LEFT_STICK_X": 0,
             "LEFT_STICK_Y": 1,
@@ -76,7 +76,7 @@ CONFIG = {
     "data_collection": {
         "high_freq_hz": 100,
         "low_freq_hz": 10,
-        "default_output_dir": "/tmp/real_robot_data",
+        "default_output_dir": "/home/syr/code/prediction_with_action/real/data",
     },
 
     "calibration": {

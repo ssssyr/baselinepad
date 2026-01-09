@@ -114,8 +114,9 @@ class DataCollector:
         self._last_image_hash = None
 
         self.episode_count = self._count_existing_episodes()
+        self.saving_episodes = set()  # 正在保存的 episode 索引集合
 
-        self.stats = {k: 0 for k in ['frames_aligned', 'frames_skipped_cam', 'frames_skipped_robot', 
+        self.stats = {k: 0 for k in ['frames_aligned', 'frames_skipped_cam', 'frames_skipped_robot',
                                      'frames_skipped_align', 'frames_dedup_id', 'frames_dedup_ts', 'frames_dedup_hash']}
 
     def _count_existing_episodes(self) -> int:
@@ -174,11 +175,10 @@ class DataCollector:
             if t_sleep > 0: time.sleep(t_sleep)
         print("[Robot Thread] Stopped")
 
-    def _save_episode(self, episode_data: list, metadata: dict):
-        if not episode_data: print("No data in episode to save."); return
-        episode_idx = self.episode_count
+    def _save_episode_background(self, episode_data: list, metadata: dict, episode_idx: int):
+        """在后台线程中保存 episode"""
         filepath = self.output_dir / f"episode_{episode_idx:04d}.npz"
-        data_dict = {k: [] for k in ['image', 'cam_ts_hw', 'cam_ts_mono', 'cam_ts_recv', 'robot_ts', 'action_ts', 
+        data_dict = {k: [] for k in ['image', 'cam_ts_hw', 'cam_ts_mono', 'cam_ts_recv', 'robot_ts', 'action_ts',
                                      'step_ts', 'action', 'robot_pose', 'gripper_state', 'force_torque', 'color_space', 'frame_id']}
         for step in episode_data:
             for k, v in step.items():
@@ -196,10 +196,21 @@ class DataCollector:
             # OpenCV 需要 BGR 格式保存，图像是 RGB，需要转换
             image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
             cv2.imwrite(str(vis_dir / f"frame_{i:05d}.png"), image_bgr)
-        print(f"\n{'='*50}\n** Episode saved to: {filepath.name} **")
+        print(f"\n{'='*50}\n** Episode {episode_idx:04d} saved! ({len(episode_data)} steps) **")
         metadata.update({'n_steps': len(episode_data), 'episode_idx': episode_idx})
         with open(self.output_dir / f"episode_{episode_idx:04d}_metadata.json", 'w') as f: json.dump(metadata, f, indent=2)
+        self.saving_episodes.discard(episode_idx)
+
+    def _save_episode(self, episode_data: list, metadata: dict):
+        """启动后台保存，立即返回"""
+        if not episode_data: print("No data in episode to save."); return
+        episode_idx = self.episode_count
         self.episode_count += 1
+        self.saving_episodes.add(episode_idx)
+        # 在后台线程中保存
+        thread = threading.Thread(target=self._save_episode_background, args=(episode_data, metadata, episode_idx), daemon=True)
+        thread.start()
+        print(f"** Episode {episode_idx:04d} saving in background... **")
 
     def _delete_last_episode(self):
         if self.episode_count > 0:
@@ -218,13 +229,18 @@ class DataCollector:
         else:
             print("No episodes to delete.")
 
-    def _draw_visualization(self, image, is_recording, episode_len, episode_count, robot_state, vel_cmd, stats, cam_data=None, action=None, timestamps=None):
+    def _draw_visualization(self, image, is_recording, episode_len, episode_count, saving_episodes, robot_state, vel_cmd, stats, cam_data=None, action=None, timestamps=None):
         vis_img = image.copy(); h, w, _ = vis_img.shape
         status_text = f"REC: {episode_len} steps" if is_recording else f"PAUSED ({episode_len} in buffer)"
         status_color = (0, 0, 255) if is_recording else (128, 128, 128)
         cv2.circle(vis_img, (30, 30), 15, status_color, -1)
         cv2.putText(vis_img, status_text, (60, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, status_color, 3)
-        cv2.putText(vis_img, f"Episodes: {episode_count}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 3)
+        episodes_text = f"Episodes: {episode_count}"
+        if saving_episodes:
+            saving_list = sorted(saving_episodes)
+            saving_str = ",".join(f"{idx:04d}" for idx in saving_list)
+            episodes_text += f" [Saving: {saving_str}]"
+        cv2.putText(vis_img, episodes_text, (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 3)
 
         # 左侧列：机器人当前状态 (STATE - 实际位置)
         if robot_state:
@@ -316,17 +332,25 @@ class DataCollector:
                 control_buttons = gamepad.get_control_buttons()
                 if control_buttons['exit']: break
                 if control_buttons['toggle_recording']:
-                    is_recording = not is_recording
-                    if is_recording: episode_start_time = time.time()
-                    print(f"** Recording {'STARTED' if is_recording else 'PAUSED'} **"); time.sleep(0.3)
+                    # 只在未录制时开始录制，录制中按START无效
+                    if not is_recording:
+                        is_recording = True
+                        episode_start_time = time.time()
+                        # 开始录制：短振动
+                        gamepad.rumble(low_frequency=0.8, high_frequency=0.8, duration_ms=200)
+                        print(f"** Recording STARTED **")
+                        time.sleep(0.3)
                 if control_buttons['save_episode']:
                     if episode_data:
                         metadata = {'duration_s': time.time() - episode_start_time if episode_start_time else 0, **CONFIG['camera']}
                         self._save_episode(episode_data, metadata)
                         episode_data, self.stats = [], {k: 0 for k in self.stats}
                         is_recording = False
+                        # 保存成功：振动确认
+                        gamepad.rumble(low_frequency=0.8, high_frequency=0.8, duration_ms=400)
                         print("** Recording stopped. Press START to record next episode. **")
-                    else: print("No data to save.")
+                    else:
+                        print("No data to save.")
                     time.sleep(0.3)
                 if control_buttons.get('reset_pose'):
                     is_resetting = True
@@ -371,7 +395,7 @@ class DataCollector:
                     step_data = {'action': action, 'robot_state': robot_state, 'action_ts': action_ts, 'robot_ts': robot_ts, **cam_data}
                     episode_data.append(step_data)
                     self.stats['frames_aligned'] += 1
-                vis_img = self._draw_visualization(cam_data['image'], is_recording, len(episode_data), self.episode_count, robot_state, lin_vel, self.stats, cam_data, action, timestamps)
+                vis_img = self._draw_visualization(cam_data['image'], is_recording, len(episode_data), self.episode_count, self.saving_episodes, robot_state, lin_vel, self.stats, cam_data, action, timestamps)
                 cv2.imshow(win_name, vis_img)
                 if cv2.waitKey(1) & 0xFF == 27: break
                 loop_elapsed = time.monotonic() - loop_start_ts
@@ -382,6 +406,13 @@ class DataCollector:
                 metadata = {'duration_s': time.time() - episode_start_time if episode_start_time else 0, 'reason_for_save': 'auto-save on exit', **CONFIG['camera']}
                 self._save_episode(episode_data, metadata)
             print("\nShutting down...")
+            # 等待后台保存完成
+            if self.saving_episodes:
+                saving_list = sorted(self.saving_episodes)
+                print(f"Waiting for {len(self.saving_episodes)} episode(s) to finish saving: {saving_list}")
+                while self.saving_episodes:
+                    time.sleep(0.1)
+                print("All saves complete!")
             self.stop_event.set()
             if camera_thread: camera_thread.join(timeout=2.0)
             robot_thread.join(timeout=2.0)

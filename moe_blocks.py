@@ -7,6 +7,17 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+# Import gradient tracking utilities
+try:
+    from grad_tracker import record_routing_info, is_grad_tracking_enabled
+    GRAD_TRACKER_AVAILABLE = True
+except ImportError:
+    GRAD_TRACKER_AVAILABLE = False
+    def record_routing_info(*args, **kwargs):
+        pass
+    def is_grad_tracking_enabled():
+        return False
+
 def _approx_gelu():
     return nn.GELU(approximate="tanh")
 
@@ -194,11 +205,13 @@ class SparseMoeBlock(nn.Module):
         num_modalities: int = 3,
         modality_bias_init: Optional[torch.Tensor] = None,
         collect_stats: bool = False,
+        layer_idx: int = -1,  # 添加层索引用于梯度追踪
     ):
         super().__init__()
         self.num_experts = num_experts
         self.num_experts_per_tok = num_experts_per_tok
         self.collect_stats = collect_stats
+        self.layer_idx = layer_idx  # 记录层索引
         intermediate_size = int(mlp_ratio * embed_dim)
         self.experts = nn.ModuleList(
             [
@@ -236,6 +249,16 @@ class SparseMoeBlock(nn.Module):
         identity = hidden_states
         orig_shape = hidden_states.shape
         topk_idx, topk_weight, aux_loss = self.gate(hidden_states, modality_ids=modality_ids)
+
+        # Record routing info for gradient tracking (only during training and when enabled)
+        if self.training and is_grad_tracking_enabled() and modality_ids is not None:
+            flat_modality = modality_ids.reshape(-1)
+            routing_info = {
+                'modality_ids': flat_modality,
+                'topk_idx': topk_idx.view(-1, self.num_experts_per_tok),
+                'topk_weight': topk_weight.view(-1, self.num_experts_per_tok),
+            }
+            record_routing_info(self.layer_idx, routing_info)
 
         flat_states = hidden_states.reshape(-1, hidden_states.shape[-1])
         flat_topk_idx = topk_idx.view(-1)

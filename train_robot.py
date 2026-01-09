@@ -39,6 +39,27 @@ from diffusers.models import AutoencoderKL
 # dataset
 from datasets.dataset import RobotDataset
 
+# Gradient tracking for per-expert modality decomposition
+try:
+    from grad_tracker import (
+        enable_grad_tracking,
+        disable_grad_tracking,
+        is_grad_tracking_enabled,
+        get_gradient_summary,
+        get_layer_aggregated,
+        clear_gradients,
+        create_expert_backward_hook,
+    )
+    GRAD_TRACKER_AVAILABLE = True
+except ImportError:
+    GRAD_TRACKER_AVAILABLE = False
+    def enable_grad_tracking(): pass
+    def disable_grad_tracking(): pass
+    def is_grad_tracking_enabled(): return False
+    def get_gradient_summary(): return {}
+    def get_layer_aggregated(): return {}
+    def clear_gradients(): pass
+
 
 #################################################################################
 #                             Training Helper Functions                         #
@@ -70,6 +91,41 @@ def create_logger(logging_dir):
     )
     logger = logging.getLogger(__name__)
     return logger
+
+
+def register_expert_gradient_hooks(model):
+    """
+    Register backward hooks on all expert FFNs to track gradient decomposition.
+
+    Args:
+        model: The DiT model (unwrapped from accelerator/DDP)
+
+    Returns:
+        List of hook handles that can be removed later
+    """
+    if not GRAD_TRACKER_AVAILABLE:
+        return []
+
+    hooks = []
+    model_for_hooks = model
+
+    # Handle DDP wrapper
+    if hasattr(model, 'module'):
+        model_for_hooks = model.module
+
+    # Iterate through all blocks to find MoE experts
+    for layer_idx, block in enumerate(model_for_hooks.blocks):
+        if hasattr(block, 'use_moe') and block.use_moe:
+            moe_block = block.mlp
+            if hasattr(moe_block, 'experts'):
+                for expert_idx, expert in enumerate(moe_block.experts):
+                    # Create and register the backward hook
+                    hook = expert.register_full_backward_hook(
+                        create_expert_backward_hook(layer_idx, expert_idx)
+                    )
+                    hooks.append(hook)
+
+    return hooks
 
 
 #################################################################################
@@ -547,6 +603,15 @@ def main(args):
     model.train()  # important! enables embedding dropout for classifier-free guidance
     model, opt, loader = accelerator.prepare(model, opt, loader)
 
+    # Register gradient tracking hooks on all expert FFNs
+    expert_hooks = []
+    if GRAD_TRACKER_AVAILABLE and getattr(args, 'track_expert_gradients', False):
+        # Need to unwrap from accelerator for hook registration
+        unwrapped_model = accelerator.unwrap_model(model)
+        expert_hooks = register_expert_gradient_hooks(unwrapped_model)
+        if accelerator.is_main_process and logger:
+            logger.info(f"✓ Registered {len(expert_hooks)} expert gradient hooks")
+
     # Load optimizer and scheduler states for resume training
     if resume_checkpoint is not None and 'optimizer' in resume_checkpoint:
         opt.load_state_dict(resume_checkpoint['optimizer'])
@@ -683,6 +748,15 @@ def main(args):
                         gate_scores_dir = os.path.join(experiment_dir, "gate_scores_analysis")
                         modality_bias = getattr(args, "modality_bias_strength_action", None)
                         save_gate_scores(gate_scores, train_steps, gate_scores_dir, modality_bias)
+
+            # Control gradient tracking: enable only on specific steps
+            # This allows us to collect gradient decomposition data without overhead every step
+            if GRAD_TRACKER_AVAILABLE and getattr(args, 'track_expert_gradients', False):
+                track_interval = getattr(args, 'gradient_track_interval', 1000)
+                if train_steps > 0 and train_steps % track_interval == 0:
+                    enable_grad_tracking()
+                else:
+                    disable_grad_tracking()
 
             opt.zero_grad()
             accelerator.backward(loss)
@@ -904,6 +978,18 @@ def main(args):
                         # Enhanced gradient norm logging with better naming
                         for k, v in grad_norm_avg.items():
                             log_payload[f"grad/{k}"] = v
+
+                        # Log gradient decomposition by modality (if tracking enabled)
+                        if GRAD_TRACKER_AVAILABLE and is_grad_tracking_enabled():
+                            grad_summary = get_gradient_summary()
+                            layer_aggregated = get_layer_aggregated()
+                            # Add all gradient decomposition data to wandb
+                            log_payload.update(grad_summary)
+                            # Also add aggregated (across layers) stats
+                            for k, v in layer_aggregated.items():
+                                log_payload[f"grad_by_modality/aggregated/{k}"] = v
+                            # Clear after logging
+                            clear_gradients()
 
                         wandb.log(log_payload, step=train_steps)
 

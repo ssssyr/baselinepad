@@ -11,12 +11,19 @@ except ImportError:
     RTDE_AVAILABLE = False
     print("警告: RTDE库未安装，将使用模拟模式")
 
+try:
+    from .ft_sensor import FTSensor
+    FT_SENSOR_AVAILABLE = True
+except ImportError:
+    FT_SENSOR_AVAILABLE = False
+    print("警告: 力传感器模块未安装")
+
 
 class RobotController:
     """机械臂控制类"""
 
     def __init__(self, robot_ip, frequency=10.0, initial_pose=None,
-                 move_velocity=0.5, move_acceleration=0.3):
+                 move_velocity=0.5, move_acceleration=0.3, ft_sensor_ip=None):
         """
         Initializes the RobotController.
 
@@ -26,13 +33,28 @@ class RobotController:
             initial_pose (list): Initial pose for simulation mode.
             move_velocity (float): Movement velocity in m/s (default: 0.5).
             move_acceleration (float): Movement acceleration in m/s^2 (default: 0.3).
+            ft_sensor_ip (str): IP address of the force/torque sensor (default: None).
         """
         self.robot_ip = robot_ip
         self.frequency = frequency
         self.dt = 1.0 / frequency
         self.move_velocity = move_velocity
         self.move_acceleration = move_acceleration
-        
+
+        # 初始化力传感器
+        self.ft_sensor = None
+        self.use_ft_sensor = False
+        if ft_sensor_ip and FT_SENSOR_AVAILABLE:
+            try:
+                self.ft_sensor = FTSensor(ip=ft_sensor_ip)
+                self.use_ft_sensor = self.ft_sensor.connected
+                if self.use_ft_sensor:
+                    print(f"[RobotController] 使用真实力传感器: {ft_sensor_ip}")
+                else:
+                    print(f"[RobotController] 力传感器连接失败，使用UR估算力")
+            except Exception as e:
+                print(f"[RobotController] 力传感器初始化失败: {e}")
+
         if RTDE_AVAILABLE:
             try:
                 # 初始化RTDE连接
@@ -159,7 +181,25 @@ class RobotController:
             return True
 
     def get_force_feedback(self):
-        """获取力反馈"""
+        """获取力反馈 - 优先使用真实力传感器"""
+        # 优先使用真实力传感器
+        if self.use_ft_sensor and self.ft_sensor:
+            try:
+                ft_data = self.ft_sensor.read()
+                force_magnitude = np.linalg.norm(ft_data[:3])
+                torque_magnitude = np.linalg.norm(ft_data[3:])
+                return {
+                    'force': ft_data[:3],
+                    'torque': ft_data[3:],
+                    'force_magnitude': force_magnitude,
+                    'torque_magnitude': torque_magnitude,
+                    'available': True,
+                    'source': 'ft_sensor'  # 标记数据来源
+                }
+            except Exception as e:
+                print(f"[RobotController] 力传感器读取失败: {e}")
+
+        # 回退到UR估算的力
         if self.connected:
             try:
                 tcp_force = self.rtde_r.getActualTCPForce()
@@ -188,6 +228,13 @@ class RobotController:
     
     def cleanup(self):
         """清理连接"""
+        # 断开力传感器连接
+        if self.ft_sensor:
+            try:
+                self.ft_sensor.disconnect()
+            except:
+                pass
+
         if self.connected:
             try:
                 # 停止控制脚本
