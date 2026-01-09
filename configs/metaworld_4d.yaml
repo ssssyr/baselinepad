@@ -18,7 +18,7 @@ training:
   skip_step: 4          # Steps to skip between frames
 
   # Training Loop
-  epochs: 1500            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
+  epochs: 500            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
   global_batch_size: 64
   global_seed: 42
   num_workers: 8
@@ -85,7 +85,7 @@ components:
   learnable_action_pos: false # Use fixed sin-cos positional embeddings for actions
 
   # Force Conditioning - 六维力/力矩输入
-  use_force: true              # Enable 6D force/torque input
+  use_force: false              # Enable 6D force/torque input
   force_dim: 6                # [fx, fy, fz, tx, ty, tz]
   force_stats_path: null      # Will auto-detect from feature_path/force_stats.json
 
