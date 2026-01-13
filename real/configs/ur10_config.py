@@ -13,7 +13,7 @@ import numpy as np
 
 CONFIG = {
     "model": {
-        "ckpt_path": "/home/syr/code/checkpoints/checkpoint0107/best_action_loss.pt",
+        "ckpt_path": "/mnt/sda/syr/checkpoint/checkpoint0112/0090000.pt",
         "vae_path": "/home/syr/code/models/sd-vae-ft-mse",
         "clip_path": "/home/syr/code/models/clip-vit-base-patch32",
         "denoise_steps": "ddim16",
@@ -38,7 +38,7 @@ CONFIG = {
         "ip": "192.168.1.50",
         "gripper_ip": "192.168.1.1",
         "control_freq": 10,
-        "initial_pose": [-0.074, 0.661, 0.002, -2.211, -2.170, -0.014],
+        "initial_pose": [0.145, -0.746, 0.400, 1.312, 1.183, -1.233],
     },
 
     # ---------------------------
@@ -76,7 +76,7 @@ CONFIG = {
     "data_collection": {
         "high_freq_hz": 100,
         "low_freq_hz": 10,
-        "default_output_dir": "/tmp/real_robot_data",
+        "default_output_dir": "/mnt/sda/datasets/real_data/3",
     },
 
     "calibration": {
@@ -84,7 +84,7 @@ CONFIG = {
     },
     "task": {
         "max_steps": 50,
-        "task_instruction": "Pick up the Rubik's Cube and place it on the plate.",
+        "task_instruction": "Close drawer-type parts box.",
         "gripper_threshold": 0.75,
     },
     "force_stats": {

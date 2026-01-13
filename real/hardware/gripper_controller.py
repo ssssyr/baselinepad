@@ -202,19 +202,19 @@ class GripperController:
                 'grip_detected': 0,
                 'available': False
             }
-        
-        # 合并左右传感器数据
+
+        # 左右传感器数据取平均
         left_force = self.left_ft_sensor[:3]
         right_force = self.right_ft_sensor[:3]
-        total_force = left_force + right_force
-        
+        total_force = (left_force + right_force) / 2
+
         left_torque = self.left_ft_sensor[3:]
         right_torque = self.right_ft_sensor[3:]
-        total_torque = left_torque + right_torque
-        
+        total_torque = (left_torque + right_torque) / 2
+
         force_magnitude = np.linalg.norm(total_force)
         torque_magnitude = np.linalg.norm(total_torque)
-        
+
         return {
             'force': total_force,
             'torque': total_torque,

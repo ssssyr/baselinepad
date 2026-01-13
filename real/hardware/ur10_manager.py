@@ -136,7 +136,7 @@ class UR10Manager:
 
     def get_force_torque(self):
         """
-        Gets the force/torque data from the robot's end-effector sensor.
+        Gets the force/torque data from the gripper's FT sensors.
 
         Returns:
             np.ndarray: An array of 6 values [Fx, Fy, Fz, Tx, Ty, Tz].
@@ -144,6 +144,14 @@ class UR10Manager:
         if not self.robot_controller.connected:
             raise RuntimeError("Robot is not connected.")
 
+        # 使用夹爪的FT传感器数据（左右取平均）
+        if self.gripper_controller and self.gripper_controller.connected:
+            self.gripper_controller.read_status()
+            ft_data = self.gripper_controller.get_force_feedback()
+            if ft_data and ft_data['available']:
+                return np.concatenate([ft_data['force'], ft_data['torque']])
+
+        # 如果夹爪未连接，使用机器人的估算数据
         ft_data = self.robot_controller.get_force_feedback()
         if ft_data and ft_data['available']:
             return np.concatenate([ft_data['force'], ft_data['torque']])

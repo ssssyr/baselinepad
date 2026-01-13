@@ -1,35 +1,33 @@
 #!/usr/bin/env python3
 """
-Convert real robot zarr data to training format.
-
-Source (single task): /mnt/sda/datasets/real_data/
-  - replay_buffer.zarr/  (robot state data)
-  - videos/              (camera videos)
+Convert npz format robot data to training format.
 
 Source (multi task): /mnt/sda/datasets/real_data/
   - task_folder_1/       (folder name = instruction)
-    - replay_buffer.zarr/
-    - videos/
+    - episode_XXXX.npz   (image, action, robot_pose, gripper_state, force_torque)
+    - episode_XXXX_vis/  (visualization images, optional)
   - task_folder_2/
-    - replay_buffer.zarr/
-    - videos/
+    - ...
+
+NPZ file structure:
+  - image: (n, H, W, 3)           - camera images
+  - action: (n, 7)                - robot actions [x,y,z,qx,qy,qz,gripper]
+  - robot_pose: (n, 6)            - robot poses [x,y,z,roll,pitch,yaw]
+  - gripper_state: (n,)           - gripper states
+  - force_torque: (n, 6)          - force/torque data
+  - cam_ts_hw, cam_ts_mono, ...   - timestamps
 
 Output: Compatible with RobotDataset
   - dataset_rgb_s_d.json
   - force_stats.json
   - episodeXXXXXXX/
-    - color_wrist_1_XXXX.npy
-    - text_clip.npy
+    - color_wrist_1_XXXX.npy      - VAE latents
+    - text_clip.npy               - CLIP text embedding
 
-Usage (single task):
-    python convert_real_robot_data.py \
-        --input /mnt/sda/datasets/real_data/task_folder \
-        --output /mnt/sda/datasets/converted
-
-Usage (multi task):
-    python convert_real_robot_data.py \
+Usage:
+    python convert_npz_data.py \
         --input /mnt/sda/datasets/real_data \
-        --output /mnt/sda/datasets/converted \
+        --output /mnt/sda/datasets/real_data_converted \
         --multi-task
 """
 
@@ -38,7 +36,7 @@ import json
 import argparse
 import logging
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 import numpy as np
 import torch
@@ -54,44 +52,21 @@ logger = logging.getLogger(__name__)
 
 # ==================== Image Preprocessing ====================
 
-def center_crop_arr(pil_image, image_size):
-    """Center crops a PIL image to the specified size."""
-    while min(pil_image.size) >= 2 * image_size:
-        pil_image = pil_image.resize(
-            tuple(x // 2 for x in pil_image.size), resample=Image.BOX
-        )
-
-    scale = image_size / min(pil_image.size)
-    pil_image = pil_image.resize(
-        tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
-    )
-
-    arr = np.array(pil_image)
-    crop_y = (arr.shape[0] - image_size) // 2
-    crop_x = (arr.shape[1] - image_size) // 2
-    return Image.fromarray(arr[crop_y: crop_y + image_size, crop_x: crop_x + image_size])
+def resize_image(pil_image, image_size):
+    """Resize image to the specified size (stretch/squash to fit, preserving all content)."""
+    return pil_image.resize((image_size, image_size), resample=Image.BICUBIC)
 
 
-# ==================== Zarr Data Reader ====================
+# ==================== NPZ Data Reader ====================
 
-class ZarrDataReader:
-    """Read robot state data from zarr format (flat storage with episode_ends)."""
+class NPZDataReader:
+    """Read robot data from npz files."""
 
-    def __init__(self, zarr_path: str):
-        import zarr
-        self.zarr = zarr.open(zarr_path, 'r')
-
-        # Get episode boundaries
-        self.episode_ends = self.zarr['meta']['episode_ends'][:]
-        self.num_episodes = len(self.episode_ends)
-
-        logger.info(f"Found {self.num_episodes} episodes in zarr data")
-
-    def get_episode_indices(self, episode_idx: int) -> tuple:
-        """Get (start_idx, end_idx) for a given episode."""
-        start_idx = 0 if episode_idx == 0 else self.episode_ends[episode_idx - 1]
-        end_idx = self.episode_ends[episode_idx]
-        return start_idx, end_idx
+    def __init__(self, task_dir: str):
+        self.task_dir = task_dir
+        self.npz_files = sorted([f for f in os.listdir(task_dir) if f.endswith('.npz')])
+        self.num_episodes = len(self.npz_files)
+        logger.info(f"Found {self.num_episodes} episodes in {task_dir}")
 
     def load_episode_data(self, episode_idx: int) -> Dict[str, np.ndarray]:
         """
@@ -101,84 +76,28 @@ class ZarrDataReader:
             episode_idx: Episode index (0-based)
 
         Returns dict with:
-            - timestamp: [n_steps]
-            - robot_eef_pose: [n_steps, 6]  -> use [:3] for x,y,z
-            - gripper_target: [n_steps]     -> grip state (0/1)
-            - gripper_force: [n_steps, 6]   -> force [fx,fy,fz,tx,ty,tz]
+            - image: [n_steps, H, W, 3]
+            - action: [n_steps, 7]    -> last column is gripper
+            - robot_pose: [n_steps, 6]
+            - gripper_state: [n_steps]
+            - force_torque: [n_steps, 6]
         """
-        start_idx, end_idx = self.get_episode_indices(episode_idx)
-
-        data = {
-            "timestamp": self.zarr['data']['timestamp'][start_idx:end_idx],
-            "robot_eef_pose": self.zarr['data']['robot_eef_pose'][start_idx:end_idx],
-            "gripper_target": self.zarr['data']['gripper_target'][start_idx:end_idx],
-            "gripper_force": self.zarr['data']['gripper_force'][start_idx:end_idx],
-        }
-
-        # Validate data
-        n_steps = len(data["timestamp"])
-        for key, val in data.items():
-            if len(val) != n_steps:
-                logger.warning(f"Episode {episode_idx}: {key} length mismatch")
-
-        return data
-
-
-# ==================== Video Frame Extractor ====================
-
-class VideoFrameExtractor:
-    """Extract frames from video with timestamp alignment."""
-
-    def __init__(self, video_dir: str, target_fps: float = 10.0):
-        self.video_dir = video_dir
-        self.target_fps = target_fps
-
-    def get_video_info(self, episode_id: str) -> Dict[str, Any]:
-        """Get video metadata: fps, frame_count, duration."""
-        video_path = os.path.join(self.video_dir, episode_id, "0.mp4")
-        if not os.path.exists(video_path):
-            return None
-
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        duration = frame_count / fps if fps > 0 else 0
-        cap.release()
+        npz_path = os.path.join(self.task_dir, self.npz_files[episode_idx])
+        data = np.load(npz_path, allow_pickle=True)
 
         return {
-            "path": video_path,
-            "fps": fps,
-            "frame_count": frame_count,
-            "width": width,
-            "height": height,
-            "duration": duration
+            "image": data["image"],
+            "action": data["action"],
+            "robot_pose": data["robot_pose"],
+            "gripper_state": data["gripper_state"],
+            "force_torque": data.get("force_torque", np.zeros((data["action"].shape[0], 6))),
         }
-
-    def extract_frame_at_time(self, video_path: str, time_sec: float) -> np.ndarray:
-        """Extract frame closest to given time (seconds from start)."""
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-
-        target_frame = int(time_sec * fps)
-        target_frame = max(0, min(target_frame, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - 1))
-
-        cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
-        ret, frame = cap.read()
-        cap.release()
-
-        if not ret:
-            return None
-
-        # Convert BGR to RGB
-        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
 
 # ==================== Main Converter ====================
 
-class RealRobotDataConverter:
-    """Convert real robot zarr + video data to training format."""
+class NPZDataConverter:
+    """Convert npz format robot data to training format."""
 
     def __init__(self, args):
         self.args = args
@@ -193,8 +112,7 @@ class RealRobotDataConverter:
         os.makedirs(self.output_dir, exist_ok=True)
 
         # Initialize components (will be set per task in multi-task mode)
-        self.zarr_reader = None
-        self.video_extractor = None
+        self.npz_reader = None
         self.current_task_dir = None
 
         # Setup models
@@ -208,12 +126,11 @@ class RealRobotDataConverter:
         """Setup components for a specific task."""
         self.current_task_dir = task_dir
         self.instruction = instruction
-        self.zarr_reader = ZarrDataReader(os.path.join(task_dir, "replay_buffer.zarr"))
-        self.video_extractor = VideoFrameExtractor(os.path.join(task_dir, "videos"))
+        self.npz_reader = NPZDataReader(task_dir)
 
-        # Re-encode instruction
+        # Encode instruction
         with torch.no_grad():
-            text_inputs = self.clip_tokenizer([self.instruction], padding=True, return_tensors="pt").to(self.device)
+            text_inputs = self.clip_tokenizer([instruction], padding=True, return_tensors="pt").to(self.device)
             self.text_embed = self.clip_model(**text_inputs).text_embeds.cpu().numpy()
 
     def _setup_models(self):
@@ -227,16 +144,10 @@ class RealRobotDataConverter:
         self.clip_tokenizer = AutoTokenizer.from_pretrained(self.args.clip_path)
         self.clip_model.eval()
 
-        # Encode instruction once (for single task mode)
-        if not self.multi_task:
-            with torch.no_grad():
-                text_inputs = self.clip_tokenizer([self.instruction], padding=True, return_tensors="pt").to(self.device)
-                self.text_embed = self.clip_model(**text_inputs).text_embeds.cpu().numpy()  # (1, 512)
-
     def _setup_transform(self):
         """Setup image preprocessing pipeline."""
         self.transform = transforms.Compose([
-            transforms.Lambda(lambda img: center_crop_arr(img, self.image_size)),
+            transforms.Lambda(lambda img: resize_image(img, self.image_size)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True)
         ])
@@ -248,7 +159,7 @@ class RealRobotDataConverter:
         delta = force - self.force_stats["mean"]
         self.force_stats["mean"] += delta / self.force_stats["count"]
         delta2 = force - self.force_stats["mean"]
-        self.force_stats["m2"] += delta * delta2
+        self.force_stats["m2"] += force * delta2
 
     def _encode_image(self, image: np.ndarray) -> np.ndarray:
         """Encode image to latent using VAE."""
@@ -260,7 +171,7 @@ class RealRobotDataConverter:
 
         return latent.cpu().numpy()  # (1, 4, 32, 32)
 
-    def _get_task_dirs(self) -> List[tuple]:
+    def _get_task_dirs(self) -> List[Tuple[str, str]]:
         """Get list of (task_dir, instruction) tuples.
 
         In single-task mode: returns [(input_dir, instruction)]
@@ -274,13 +185,12 @@ class RealRobotDataConverter:
         for item in os.listdir(self.input_dir):
             item_path = os.path.join(self.input_dir, item)
             if os.path.isdir(item_path):
-                # Check if it has the required structure
-                zarr_path = os.path.join(item_path, "replay_buffer.zarr")
-                videos_path = os.path.join(item_path, "videos")
-                if os.path.exists(zarr_path) and os.path.exists(videos_path):
+                # Check if it has npz files
+                npz_files = [f for f in os.listdir(item_path) if f.endswith('.npz')]
+                if npz_files:
                     # Use folder name as instruction
                     tasks.append((item_path, item))
-                    logger.info(f"Found task: {item} -> {item_path}")
+                    logger.info(f"Found task: {item} -> {item_path} ({len(npz_files)} episodes)")
 
         if not tasks:
             raise ValueError(f"No valid task directories found in {self.input_dir}")
@@ -306,25 +216,15 @@ class RealRobotDataConverter:
                 # Setup for this task
                 self._setup_for_task(task_dir, instruction)
 
-                for ep_idx in range(self.zarr_reader.num_episodes):
-                    episode_id = str(ep_idx)  # Video directory uses string ID
-                    logger.info(f"Processing episode {ep_idx+1}/{self.zarr_reader.num_episodes}: {episode_id}")
+                for ep_idx in range(self.npz_reader.num_episodes):
+                    episode_id = self.npz_reader.npz_files[ep_idx].replace('.npz', '')
+                    logger.info(f"Processing episode {ep_idx+1}/{self.npz_reader.num_episodes}: {episode_id}")
 
-                    # Load zarr data
-                    episode_data = self.zarr_reader.load_episode_data(ep_idx)
+                    # Load npz data
+                    episode_data = self.npz_reader.load_episode_data(ep_idx)
 
-                    if episode_data["timestamp"] is None or len(episode_data["timestamp"]) == 0:
-                        logger.warning(f"Episode {ep_idx}: No timestamp data, skipping")
-                        continue
-
-                    # Get video info
-                    video_info = self.video_extractor.get_video_info(episode_id)
-                    if video_info is None:
-                        logger.warning(f"Episode {ep_idx}: No video found, skipping")
-                        continue
-
-                    logger.info(f"  Video: {video_info['frame_count']} frames, {video_info['fps']} fps, {video_info['duration']:.1f}s")
-                    logger.info(f"  Zarr: {len(episode_data['timestamp'])} steps")
+                    n_steps = len(episode_data["image"])
+                    logger.info(f"  Images: {n_steps} frames")
 
                     # Create episode directory (use global episode index)
                     episode_dir = os.path.join(self.output_dir, f"episode{global_episode_idx:07d}")
@@ -334,35 +234,22 @@ class RealRobotDataConverter:
                     text_embed_path = os.path.join(episode_dir, "text_clip.npy")
                     np.save(text_embed_path, self.text_embed)
 
-                    # Get video start time (first timestamp)
-                    video_start_time = episode_data["timestamp"][0]
-
-                    # Process each time step
-                    n_steps = len(episode_data["timestamp"])
+                    # Process each frame
                     for step_idx in range(n_steps):
-                        # Extract state
-                        pose = episode_data["robot_eef_pose"][step_idx]
+                        # Extract state from robot_pose: [x, y, z, roll, pitch, yaw]
+                        pose = episode_data["robot_pose"][step_idx]
                         x, y, z = pose[0], pose[1], pose[2]
-                        grip = int(episode_data["gripper_target"][step_idx]) if episode_data["gripper_target"] is not None else 0
+                        grip = int(episode_data["gripper_state"][step_idx])
                         state = [float(x), float(y), float(z), float(grip)]
 
                         # Extract force
-                        if episode_data["gripper_force"] is not None:
-                            force = episode_data["gripper_force"][step_idx].tolist()
-                        else:
-                            force = [0.0] * 6
+                        force = episode_data["force_torque"][step_idx].tolist()
 
                         # Update force stats
                         self._update_force_stats(force)
 
-                        # Get corresponding video frame
-                        timestamp = episode_data["timestamp"][step_idx]
-                        time_from_start = timestamp - video_start_time
-                        frame_img = self.video_extractor.extract_frame_at_time(video_info["path"], time_from_start)
-
-                        if frame_img is None:
-                            logger.warning(f"  Step {step_idx}: Failed to extract frame at t={time_from_start:.2f}s")
-                            continue
+                        # Get image
+                        frame_img = episode_data["image"][step_idx]
 
                         # Encode image
                         latent = self._encode_image(frame_img)
@@ -410,12 +297,12 @@ class RealRobotDataConverter:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Convert real robot zarr data to training format")
+    parser = argparse.ArgumentParser(description="Convert npz format robot data to training format")
 
     # Input/Output
     parser.add_argument("--input", type=str, default="/mnt/sda/datasets/real_data",
                         help="Input directory (single task) or parent directory (multi-task)")
-    parser.add_argument("--output", type=str, default="/mnt/sda/datasets/converted",
+    parser.add_argument("--output", type=str, default="/mnt/sda/datasets/real_data_converted",
                         help="Output directory for converted data")
 
     # Model paths
@@ -427,7 +314,7 @@ if __name__ == "__main__":
     # Task description
     parser.add_argument("--multi-task", action="store_true",
                         help="Enable multi-task mode: scan subdirectories and use folder names as instructions")
-    parser.add_argument("--instruction", type=str, default="夹起魔方放到盘子里",
+    parser.add_argument("--instruction", type=str, default="",
                         help="Task instruction for text embedding (single-task mode only)")
 
     # Processing parameters
@@ -439,7 +326,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Run conversion
-    converter = RealRobotDataConverter(args)
+    converter = NPZDataConverter(args)
     converter.convert()
 
     logger.info("Conversion complete!")

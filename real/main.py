@@ -12,9 +12,11 @@ import cv2
 from pathlib import Path
 
 # Add project root to the Python path to allow imports from other packages.
-# This assumes 'main.py' is in 'baselinepad/real/' and the project root is 'baselinepad/'.
+# This assumes 'main.py' is in 'prediction_with_action/real/' and the project root is 'prediction_with_action/'.
 project_root = Path(__file__).parent.parent.absolute()
 sys.path.append(str(project_root))
+# Add third_party directory for realsense_interface
+sys.path.insert(0, str(project_root / "real" / "third_party"))
 
 # --- Local Imports from the new structure ---
 from configs.ur10_config import CONFIG
@@ -75,9 +77,9 @@ def is_pose_safe(pose, workspace_limits=None):
     # Default UR10 workspace limits (in meters)
     # Adjust these values based on your actual robot setup
     default_limits = {
-        'x_min': -0.27, 'x_max': 0.5,
-        'y_min': 0.5, 'y_max': 1.1,
-        'z_min': -0.13,  'z_max': 0.142,
+        'x_min': -0.5, 'x_max': 0.5,
+        'y_min': -1, 'y_max': -0.5,
+        'z_min': 0.365,  'z_max': 0.8,
     }
 
     limits = workspace_limits or default_limits
@@ -316,23 +318,53 @@ def main():
             print("\n2. Loading AI Agent...")
             agent = build_agent()
 
-            # 3. Move to initial pose from config.json
-            print("\n3. Moving to initial pose from config.json...")
-            config_path = os.path.join(os.path.dirname(__file__), "scripts", "config.json")
-            with open(config_path, "r") as f:
-                teleop_config = json.load(f)
-            initial_pose = np.array(teleop_config["robot"]["initial_pose"])
-            print(f"Initial pose: {initial_pose}")
+            # 3. Move to initial pose from CONFIG
+            print("\n3. Moving to initial pose from CONFIG...")
+            initial_pose = np.array(CONFIG["robot"]["initial_pose"])
+            print(f"Target initial pose: {initial_pose}")
 
-            if is_pose_safe(initial_pose):
-                robot.move_to_pose_sync(initial_pose)
-                # NOTE: Training data uses opposite encoding (0=open, 1=closed)
-                # To match the training data's initial state (gripper=0=open),
-                # we send 1.0 to the robot API which expects 1=open
-                robot.set_gripper(1.0)  # Robot API: 1.0 = open
-                print("Moved to initial pose successfully, gripper opened.")
-            else:
-                print("警告：初始位姿超出工作范围，跳过移动")
+            # 获取当前位置
+            current_pose, _, _ = robot.get_tcp_pose_with_ts()
+            print(f"Current pose: {current_pose}")
+
+            # 检查每个维度，超出的移动到限制边界
+            safe_pose = initial_pose.copy()
+            workspace_limits = {
+                'x_min': -0.5, 'x_max': 0.5,
+                'y_min': -1, 'y_max': -0.5,
+                'z_min': 0.365,  'z_max': 0.8,
+            }
+
+            # 检查x维度，超出则限制到边界
+            if initial_pose[0] < workspace_limits['x_min']:
+                print(f"警告：X坐标 {initial_pose[0]:.3f} 低于最小值，限制到 {workspace_limits['x_min']}")
+                safe_pose[0] = workspace_limits['x_min']
+            elif initial_pose[0] > workspace_limits['x_max']:
+                print(f"警告：X坐标 {initial_pose[0]:.3f} 超过最大值，限制到 {workspace_limits['x_max']}")
+                safe_pose[0] = workspace_limits['x_max']
+
+            # 检查y维度，超出则限制到边界
+            if initial_pose[1] < workspace_limits['y_min']:
+                print(f"警告：Y坐标 {initial_pose[1]:.3f} 低于最小值，限制到 {workspace_limits['y_min']}")
+                safe_pose[1] = workspace_limits['y_min']
+            elif initial_pose[1] > workspace_limits['y_max']:
+                print(f"警告：Y坐标 {initial_pose[1]:.3f} 超过最大值，限制到 {workspace_limits['y_max']}")
+                safe_pose[1] = workspace_limits['y_max']
+
+            # 检查z维度，超出则限制到边界
+            if initial_pose[2] < workspace_limits['z_min']:
+                print(f"警告：Z坐标 {initial_pose[2]:.3f} 低于最小值，限制到 {workspace_limits['z_min']}")
+                safe_pose[2] = workspace_limits['z_min']
+            elif initial_pose[2] > workspace_limits['z_max']:
+                print(f"警告：Z坐标 {initial_pose[2]:.3f} 超过最大值，限制到 {workspace_limits['z_max']}")
+                safe_pose[2] = workspace_limits['z_max']
+
+            print(f"Safe pose to move: {safe_pose}")
+
+            robot.move_to_pose_sync(safe_pose)
+            # 初始夹爪状态：关闭
+            robot.set_gripper(0.0)  # Robot API: 0.0 = closed
+            print("Moved to initial pose successfully, gripper closed.")
 
             print("\nInitialization complete. Starting main control loop.")
             cv2.namedWindow('UR10 Diffusion Policy - Current + 3 Predicted Frames', cv2.WINDOW_NORMAL)
@@ -436,17 +468,42 @@ def main():
                 # Combine with orientation from current pose to form target pose
                 target_pose = np.concatenate([target_xyz, current_pose[3:]])
 
-                # c. Safety Check: Verify pose is within workspace
-                # 注意：有 smooth_motion_planner 分步执行，不需要位移限制
-                if not is_pose_safe(target_pose):
-                    print(f"警告：目标位姿超出工作范围，跳过此步骤")
-                    time.sleep(0.1)
-                    continue
+                # c. Safety Check: 检查每个维度，超出的移动到限制边界
+                workspace_limits = {
+                    'x_min': -0.5, 'x_max': 0.5,
+                    'y_min': -1, 'y_max': -0.5,
+                    'z_min': 0.365,  'z_max': 0.8,
+                }
 
-                # e. Execution: 直接移动到目标
+                safe_target_pose = target_pose.copy()
+
+                # 检查x维度，超出则限制到边界
+                if target_pose[0] < workspace_limits['x_min']:
+                    print(f"警告：X坐标 {target_pose[0]:.3f} 低于最小值，限制到 {workspace_limits['x_min']}")
+                    safe_target_pose[0] = workspace_limits['x_min']
+                elif target_pose[0] > workspace_limits['x_max']:
+                    print(f"警告：X坐标 {target_pose[0]:.3f} 超过最大值，限制到 {workspace_limits['x_max']}")
+                    safe_target_pose[0] = workspace_limits['x_max']
+
+                # 检查y维度，超出则限制到边界
+                if target_pose[1] < workspace_limits['y_min']:
+                    print(f"警告：Y坐标 {target_pose[1]:.3f} 低于最小值，限制到 {workspace_limits['y_min']}")
+                    safe_target_pose[1] = workspace_limits['y_min']
+                elif target_pose[1] > workspace_limits['y_max']:
+                    print(f"警告：Y坐标 {target_pose[1]:.3f} 超过最大值，限制到 {workspace_limits['y_max']}")
+                    safe_target_pose[1] = workspace_limits['y_max']
+
+                # 检查z维度，超出则限制到边界
+                if target_pose[2] < workspace_limits['z_min']:
+                    print(f"警告：Z坐标 {target_pose[2]:.3f} 低于最小值，限制到 {workspace_limits['z_min']}")
+                    safe_target_pose[2] = workspace_limits['z_min']
+                elif target_pose[2] > workspace_limits['z_max']:
+                    print(f"警告：Z坐标 {target_pose[2]:.3f} 超过最大值，限制到 {workspace_limits['z_max']}")
+                    safe_target_pose[2] = workspace_limits['z_max']
+
+                # e. Execution: 移动到安全目标位置
                 print(f"移动到目标位置...")
-                target_pose = np.concatenate([target_xyz, current_pose[3:]])
-                robot.move_to_pose_sync(target_pose, timeout=3.0)
+                robot.move_to_pose_sync(safe_target_pose, timeout=3.0)
                 robot.set_gripper(target_gripper)
                 print(f"移动完成，夹爪设置: {target_gripper}\n")
 
