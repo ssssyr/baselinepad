@@ -134,7 +134,7 @@ def save_config(config: argparse.Namespace, save_path: str):
                       'text_emb_size', 'use_depth', 'd_hidden_size', 'd_patch_size', 'depth_filter',
                       'use_force', 'force_dim', 'force_stats_path', 'force_mean', 'force_std',
                       'action_steps', 'action_dim', 'action_scale', 'absolute_action', 'action_condition',
-                      'learnable_action_pos', 'action_loss_lambda', 'action_loss_start'],
+                      'learnable_action_pos', 'action_loss_lambda', 'action_loss_start', 'adamn'],
         'moe': ['use_moe', 'num_experts', 'moe_top_k', 'aux_loss_weight', 'router_z_loss_weight', 'moe_start_layer', 'moe_shared_experts', 'use_modality_bias', 'modality_bias_strength_action', 'modality_bias_strength_depth', 'collect_stats'],
         'wandb': ['use_wandb', 'wandb_project', 'wandb_run_name']
     }

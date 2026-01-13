@@ -44,7 +44,7 @@ def calculate_flops():
     args.learnable_action_pos = False
     args.text_cond = False
     args.attn_mask = False
-    args.use_expert_adaln = False
+    args.use_adamn = False
     args.collect_stats = False
     args.moe_aux_loss = 0.01
 

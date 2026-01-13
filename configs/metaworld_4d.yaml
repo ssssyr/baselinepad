@@ -21,11 +21,11 @@ training:
   epochs: 500            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
   global_batch_size: 64
   global_seed: 42
-  num_workers: 8
+  num_workers: 16
   without_ema: false
   
   # Optimizer Settings
-  learning_rate: 5e-5   # Learning rate for AdamW optimizer
+  learning_rate: 1e-4   # Learning rate for AdamW optimizer
   weight_decay: 0.0     # Weight decay for AdamW optimizer
   adam_beta1: 0.9       # AdamW beta1 parameter
   adam_beta2: 0.999     # AdamW beta2 parameter
@@ -60,7 +60,7 @@ components:
   rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/0030000.pt"
 
   # Attention
-  attn_mask: false
+  attn_mask: true
 
   # Dynamics - Enable for MetaWorld
   dynamics: true
@@ -88,6 +88,9 @@ components:
   use_force: false              # Enable 6D force/torque input
   force_dim: 6                # [fx, fy, fz, tx, ty, tz]
   force_stats_path: null      # Will auto-detect from feature_path/force_stats.json
+
+  # AdaLN - per-modality expert LayerNorms (CogVideoX style)
+  adamn: true                 # Enable per-modality adaptive LayerNorm
 
   # Loss Configuration
   action_loss_lambda: 2.0   # Weight for the action prediction loss

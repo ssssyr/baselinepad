@@ -1234,9 +1234,9 @@ if __name__ == "__main__":
     parser.add_argument("--moe-start-layer", type=int)
     parser.add_argument("--moe-shared-experts", type=int)
 
-    # Expert AdaLN
-    parser.add_argument("--use-expert-adaln", action="store_true",
-                        help="Use per-modality expert LayerNorms in DiT blocks (CogVideoX style)")
+    # AdaLN - per-modality expert LayerNorms
+    parser.add_argument("--use-adamn", action="store_true",
+                        help="Use per-modality adaptive LayerNorms in DiT blocks (CogVideoX style)")
 
     # Wandb
     parser.add_argument("--use-wandb", action="store_true")

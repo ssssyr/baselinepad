@@ -232,14 +232,14 @@ class DiTBlock(nn.Module):
         use_modality_bias=False,
         modality_bias_init=None,
         num_modalities=3,
-        use_expert_adaln=False,
+        use_adamn=False,
         collect_stats=False,
         layer_idx=-1,  # Add layer index for gradient tracking
         **block_kwargs,
     ):
         super().__init__()
-        self.use_expert_adaln = use_expert_adaln
-        if use_expert_adaln:
+        self.use_adamn = use_adamn
+        if use_adamn:
             # Create per-modality expert LayerNorms with learnable affine params
             self.norm1_experts = nn.ModuleList([
                 nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
@@ -284,14 +284,14 @@ class DiTBlock(nn.Module):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
 
         # Apply expert LayerNorms if enabled, otherwise use shared norm
-        if self.use_expert_adaln:
+        if self.use_adamn:
             normed_x = apply_expert_ln(x, modality_ids, self.norm1_experts)
         else:
             normed_x = self.norm1(x)
 
         x = x + gate_msa.unsqueeze(1) * self.attn(modulate(normed_x, shift_msa, scale_msa))
 
-        if self.use_expert_adaln:
+        if self.use_adamn:
             normed_x = apply_expert_ln(x, modality_ids, self.norm2_experts)
         else:
             normed_x = self.norm2(x)
@@ -421,7 +421,7 @@ class DiT(nn.Module):
         self.use_modality_bias = bool(getattr(args, "use_modality_bias", False))
         self.modality_bias_strength_action = float(getattr(args, "modality_bias_strength_action", 0.0))
         self.modality_bias_strength_depth = float(getattr(args, "modality_bias_strength_depth", 0.0))
-        self.use_expert_adaln = bool(getattr(args, "use_expert_adaln", False))
+        self.use_adamn = bool(getattr(args, "use_adamn", False))
         self.collect_stats = bool(getattr(args, "collect_stats", False))
         self.use_force = bool(getattr(args, "use_force", False))
         self.force_dim = int(getattr(args, "force_dim", 6))
@@ -519,7 +519,7 @@ class DiT(nn.Module):
                 use_modality_bias=self.use_modality_bias and block_uses_moe,
                 modality_bias_init=self.moe_modality_bias_init,
                 num_modalities=self.moe_num_modalities,
-                use_expert_adaln=self.use_expert_adaln,
+                use_adamn=self.use_adamn,
                 collect_stats=self.collect_stats,
                 layer_idx=layer_idx,  # Pass layer index for gradient tracking
             )

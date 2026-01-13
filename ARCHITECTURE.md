@@ -411,11 +411,11 @@ CLI Arguments
 | DiT-L/2 | 24 | 1024 | 16 | ~458M |
 | **DiT-XL/2** | **28** | **1152** | **16** | **~680M** |
 
-### 7.2 Expert AdaLN 参数
+### 7.2 AdaLN 参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `use_expert_adaln` | False | 启用专家 LayerNorm |
+| `adamn` | False | 启用 per-modality adaptive LayerNorm |
 | `num_modalities` | 2-4 | 模态数量 (RGB+Action+Force+Depth) |
 | `hidden_size` | 1152 | 隐藏层维度 |
 | `eps` | 1e-6 | LayerNorm 稳定性参数 |

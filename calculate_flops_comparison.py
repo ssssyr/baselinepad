@@ -115,7 +115,7 @@ def main():
     base_args.dynamics = True
     base_args.text_cond = False
     base_args.attn_mask = False
-    base_args.use_expert_adaln = False
+    base_args.use_adamn = False
     base_args.collect_stats = False
     base_args.ckpt_wrapper = False
 
