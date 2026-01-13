@@ -38,7 +38,8 @@ class UR10Manager:
         self.default_gripper_open = default_gripper_open
 
         # Instantiate the low-level controllers, passing the control frequency
-        self.robot_controller = RobotController(robot_ip=self.robot_ip, frequency=control_freq)
+        # 如果有gripper_ip，也作为力传感器IP传递（OnRobot夹爪内置力传感器）
+        self.robot_controller = RobotController(robot_ip=self.robot_ip, frequency=control_freq, ft_sensor_ip=gripper_ip)
 
         # Verify robot connection
         if not self.robot_controller.connected:
