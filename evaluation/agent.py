@@ -318,8 +318,8 @@ class DiffusionAgent():
         x_pred = x_pred.view(B*t,int(C/t),H,W)
         rec_pred = self.vae.decode(x_pred / 0.18215).sample
         rec_pred = torch.clamp(127.5 * rec_pred + 128.0, 0, 255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy() # 3, 256,256,3
-        img = np.concatenate([rec_pred[0], rec_pred[1], rec_pred[2]], axis=1)
-        return img
+        # Return only the first predicted frame
+        return rec_pred[0]
 
 
 

@@ -191,10 +191,16 @@ class DataCollector:
         np.savez_compressed(filepath, **data_dict)
         vis_dir = self.output_dir / f"episode_{episode_idx:04d}_vis"
         vis_dir.mkdir(exist_ok=True)
-        # 保存纯图像（不添加任何文字信息）
+        # 保存纯图像（裁剪为中心正方形）
         for i, step_data in enumerate(episode_data):
             image_rgb = step_data['image']
-            image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+            h, w = image_rgb.shape[:2]
+            # 中心裁剪为正方形
+            size = min(h, w)
+            y_start = (h - size) // 2
+            x_start = (w - size) // 2
+            image_rgb_cropped = image_rgb[y_start:y_start+size, x_start:x_start+size]
+            image_bgr = cv2.cvtColor(image_rgb_cropped, cv2.COLOR_RGB2BGR)
             cv2.imwrite(str(vis_dir / f"frame_{i:05d}.png"), image_bgr)
         print(f"\n{'='*50}\n** Episode {episode_idx:04d} saved to: {filepath.name} **")
         metadata.update({'n_steps': len(episode_data), 'episode_idx': episode_idx})

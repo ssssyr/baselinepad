@@ -198,8 +198,8 @@ class DiffusionAgent():
     @staticmethod
     def letterbox_resize(image, target_size=256):
         """
-        Letterbox 调整图像大小：保持宽高比，用黑边填充
-        与训练时的处理方式保持一致
+        直接拉伸调整图像大小到目标尺寸
+        不保持宽高比，直接拉伸到目标正方形尺寸
 
         Args:
             image: numpy array (H, W, C) or PIL Image
@@ -216,30 +216,13 @@ class DiffusionAgent():
         else:
             pil_image = image
 
-        original_w, original_h = pil_image.size
+        # 直接拉伸到目标尺寸，不保持宽高比
+        resized = pil_image.resize((target_size, target_size), resample=Image.BICUBIC)
 
-        # 计算缩放比例（使长边等于目标尺寸）
-        scale = target_size / max(original_w, original_h)
-
-        # 等比例缩放
-        new_w = int(round(original_w * scale))
-        new_h = int(round(original_h * scale))
-        resized = pil_image.resize((new_w, new_h), resample=Image.BICUBIC)
-
-        # 创建黑色背景
-        result = Image.new("RGB", (target_size, target_size), (0, 0, 0))
-
-        # 计算粘贴位置（居中）
-        paste_x = (target_size - new_w) // 2
-        paste_y = (target_size - new_h) // 2
-
-        # 粘贴缩放后的图像
-        result.paste(resized, (paste_x, paste_y))
-
-        return np.array(result)
+        return np.array(resized)
 
     def encode_image(self, image):
-        # 使用 letterbox resize 保持宽高比，与训练时一致
+        # 直接拉伸到目标尺寸
         image = self.letterbox_resize(image, target_size=256)
         image = torch.tensor(image).float().permute(2,0,1).unsqueeze(0)
         image = torch.clamp((image-128.0)/127.5, -1, 1)
@@ -343,7 +326,7 @@ class DiffusionAgent():
         return samples, samples_a, sample_depth
     
     def decode(self, x, x_pred, prefix="", save=False):
-        # 使用 letterbox 处理原始图像，保持宽高比
+        # 直接拉伸到目标尺寸
         x = self.letterbox_resize(x, target_size=256)
         B,C,H,W = x_pred.shape
         t = self.args.predict_horizon
@@ -378,7 +361,7 @@ class DiffusionAgent():
         # Image.fromarray(depth_img).save(f"diffusion_deploy/predict_{prefix}_{uuid}_depth2.png")
 
     def decode_rgb(self, x, x_pred, prefix=""):
-        # 使用 letterbox 处理原始图像，保持宽高比
+        # 直接拉伸到目标尺寸
         x = self.letterbox_resize(x, target_size=256)
         B,C,H,W = x_pred.shape
         t = self.args.predict_horizon

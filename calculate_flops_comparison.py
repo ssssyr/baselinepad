@@ -2,9 +2,9 @@
 计算不同模型配置的 GFLOPs 对比
 
 包括：
-1. 4专家 MoE vs 8专家 MoE
-2. 同等规模 Dense 模型
-3. baselinepad 中的各种规模 Dense 模型
+1. Top-1 vs Top-2 路由 (4专家 MoE)
+2. 4专家 vs 8专家 MoE (Top-2)
+3. Dense 模型对比
 """
 
 import torch
@@ -12,6 +12,7 @@ import torch.nn as nn
 import argparse
 import sys
 import os
+import importlib
 
 # 添加路径以导入不同项目的模型
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,46 +22,106 @@ sys.path.insert(0, '/home/syr/code/baselinepad')
 from thop import profile, clever_format
 
 # 导入当前项目的模型（带MoE）
-from models import DiT_models as moe_models
+import models as current_models
+moe_models = current_models.DiT_models
 
-# 导入baselinepad的模型（Dense）
+# 导入baselinepad的模型（Dense）- 使用独立导入
 try:
-    from models import DiT_models as dense_models
+    # 先删除之前导入的models模块
+    if 'models' in sys.modules:
+        # 保存当前项目模型
+        current_DiT = sys.modules['models'].DiT
+        # 删除models模块以便重新导入
+        del sys.modules['models']
+
+    # 重新从baselinepad导入
+    sys.path.insert(0, '/home/syr/code/baselinepad')
+    import models as baseline_models
+    dense_models = baseline_models.DiT_models
+
+    # 恢复当前项目模型
+    sys.modules['models'] = current_models
+
     print("✓ 导入 baselinepad dense 模型")
 except Exception as e:
     print(f"⚠ 导入 baselinepad 模型失败: {e}")
     dense_models = None
+    # 恢复当前项目模型
+    sys.modules['models'] = current_models
 
 
-def create_dummy_inputs(args, device='cpu', use_force=False):
-    """创建模型输入"""
-    latent_size = args.image_size // 8  # 32
-    batch_size = 1
+def create_model_forward_wrapper(args, use_force=False):
+    """创建一个forward wrapper用于thop计算"""
+    def forward_wrapper(x, t, y, x_cond, action_cond, noised_action):
+        """包装器函数，将位置参数转换为关键字参数"""
+        force_cond = None
+        depth_cond = None
+        noised_depth = None
+        # 实际的模型调用会使用关键字参数
+        return None  # 这个wrapper会被替换
+    return forward_wrapper
 
-    x = torch.randn(batch_size, 4 * args.predict_horizon, latent_size, latent_size, device=device)
-    x_cond = torch.randn(batch_size, 4, latent_size, latent_size, device=device)
-    t = torch.randint(0, 1000, (batch_size,), device=device)
-    y = torch.randint(0, args.num_classes, (batch_size,), device=device)
-    noised_action = torch.randn(batch_size, args.action_steps, args.action_dim, device=device)
-    action_cond = torch.randn(batch_size, args.action_dim, device=device)
 
-    # 对于baselinepad模型，可能没有force_cond参数
-    force_cond = None
-    depth_cond = None
-    noised_depth = None
+class ModelWrapper(nn.Module):
+    """包装器模块，用于处理带关键字参数的forward"""
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
 
-    # 根据是否需要force_cond返回不同的inputs
-    if use_force:
-        # 当前项目模型：需要force_cond参数（即使为None也要传）
-        inputs = (x, t, y, x_cond, action_cond, noised_action, force_cond, depth_cond, noised_depth)
-    else:
-        # baselinepad模型：不需要force_cond参数
-        inputs = (x, t, y, x_cond, action_cond, noised_action, depth_cond, noised_depth)
-    return inputs
+    def forward(self, x, t, y, x_cond, action_cond, noised_action):
+        force_cond = None
+        depth_cond = None
+        noised_depth = None
+        return self.model(x, t, y, x_cond=x_cond, action_cond=action_cond,
+                         noised_action=noised_action, force_cond=force_cond,
+                         depth_cond=depth_cond, noised_depth=noised_depth)
+
+
+def calculate_model_flops_with_wrapper(model_creator, model_args, input_creator, model_name):
+    """计算单个模型的FLOPs - 使用wrapper处理关键字参数"""
+    print(f"\n{'='*70}")
+    print(f"计算: {model_name}")
+    print(f"{'='*70}")
+
+    try:
+        model = model_creator()
+        model.eval()
+        device = 'cpu'
+        model = model.to(device)
+
+        # 创建包装器
+        wrapped_model = ModelWrapper(model)
+        wrapped_model.eval()
+
+        # 创建输入
+        inputs = input_creator()
+
+        # 计算参数量
+        total_params = sum(p.numel() for p in model.parameters())
+
+        # 计算FLOPs - 使用包装后的模型
+        flops, params = profile(wrapped_model, inputs=inputs, verbose=False)
+        flops_giga = flops / 1e9
+        params_million = params / 1e6
+
+        print(f"参数量: {total_params/1e6:.1f}M")
+        print(f"FLOPs:  {flops_giga:.2f} GFLOPs/forward")
+
+        return {
+            'name': model_name,
+            'params_m': total_params / 1e6,
+            'flops_g': flops_giga,
+            'flops_16step_ddim': flops_giga * 16,
+        }
+    except Exception as e:
+        print(f"✗ 计算失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 def calculate_model_flops(model_creator, model_args, inputs, model_name):
-    """计算单个模型的FLOPs"""
+    """计算单个模型的FLOPs - 保留用于baselinepad"""
     print(f"\n{'='*70}")
     print(f"计算: {model_name}")
     print(f"{'='*70}")
@@ -95,6 +156,21 @@ def calculate_model_flops(model_creator, model_args, inputs, model_name):
         return None
 
 
+def create_dummy_inputs(args, device='cpu'):
+    """创建模型输入 - 返回位置参数元组"""
+    latent_size = args.image_size // 8  # 32
+    batch_size = 1
+
+    x = torch.randn(batch_size, 4 * args.predict_horizon, latent_size, latent_size, device=device)
+    x_cond = torch.randn(batch_size, 4, latent_size, latent_size, device=device)
+    t = torch.randint(0, 1000, (batch_size,), device=device)
+    y = torch.randint(0, args.num_classes, (batch_size,), device=device)
+    noised_action = torch.randn(batch_size, args.action_steps, args.action_dim, device=device)
+    action_cond = torch.randn(batch_size, args.action_dim, device=device)
+
+    return (x, t, y, x_cond, action_cond, noised_action)
+
+
 def main():
     print("="*70)
     print("DiT + MoE GFLOPs 对比分析")
@@ -122,34 +198,55 @@ def main():
     results = []
 
     # ============================================
-    # 1. 当前项目的 MoE 模型
+    # 1. 当前项目的 MoE 模型 (使用wrapper处理关键字参数)
     # ============================================
     print(f"\n{'='*70}")
     print("1. MoE 模型 (当前项目)")
     print(f"{'='*70}")
 
-    # 4专家 MoE
-    args_4e = argparse.Namespace(**vars(base_args))
-    args_4e.use_moe = True
-    args_4e.num_experts = 4
-    args_4e.moe_top_k = 2
-    args_4e.moe_aux_loss = 0.01
-    args_4e.shared_experts = 2
-    args_4e.moe_start_layer = 14
-    args_4e.use_modality_bias = False
-    args_4e.moe_num_modalities = 2
+    # 4专家 MoE - Top-1
+    args_4e_top1 = argparse.Namespace(**vars(base_args))
+    args_4e_top1.use_moe = True
+    args_4e_top1.num_experts = 4
+    args_4e_top1.moe_top_k = 1
+    args_4e_top1.moe_aux_loss = 0.01
+    args_4e_top1.shared_experts = 2
+    args_4e_top1.moe_start_layer = 14
+    args_4e_top1.use_modality_bias = False
+    args_4e_top1.moe_num_modalities = 2
 
-    inputs = create_dummy_inputs(args_4e, use_force=True)
-    result = calculate_model_flops(
-        lambda **kwargs: moe_models['DiT-XL/2'](input_size=32, num_classes=1000, args=args_4e),
+    inputs = create_dummy_inputs(args_4e_top1)
+    result = calculate_model_flops_with_wrapper(
+        lambda: moe_models['DiT-XL/2'](input_size=32, num_classes=1000, args=args_4e_top1),
         {},
-        inputs,
-        "DiT-XL/2 + MoE (4专家)"
+        lambda: inputs,
+        "DiT-XL/2 + MoE (4专家, top-1)"
     )
     if result:
         results.append(result)
 
-    # 8专家 MoE
+    # 4专家 MoE - Top-2
+    args_4e_top2 = argparse.Namespace(**vars(base_args))
+    args_4e_top2.use_moe = True
+    args_4e_top2.num_experts = 4
+    args_4e_top2.moe_top_k = 2
+    args_4e_top2.moe_aux_loss = 0.01
+    args_4e_top2.shared_experts = 2
+    args_4e_top2.moe_start_layer = 14
+    args_4e_top2.use_modality_bias = False
+    args_4e_top2.moe_num_modalities = 2
+
+    inputs = create_dummy_inputs(args_4e_top2)
+    result = calculate_model_flops_with_wrapper(
+        lambda: moe_models['DiT-XL/2'](input_size=32, num_classes=1000, args=args_4e_top2),
+        {},
+        lambda: inputs,
+        "DiT-XL/2 + MoE (4专家, top-2)"
+    )
+    if result:
+        results.append(result)
+
+    # 8专家 MoE - Top-2
     args_8e = argparse.Namespace(**vars(base_args))
     args_8e.use_moe = True
     args_8e.num_experts = 8
@@ -160,28 +257,28 @@ def main():
     args_8e.use_modality_bias = False
     args_8e.moe_num_modalities = 2
 
-    inputs = create_dummy_inputs(args_8e, use_force=True)
-    result = calculate_model_flops(
-        lambda **kwargs: moe_models['DiT-XL/2'](input_size=32, num_classes=1000, args=args_8e),
+    inputs = create_dummy_inputs(args_8e)
+    result = calculate_model_flops_with_wrapper(
+        lambda: moe_models['DiT-XL/2'](input_size=32, num_classes=1000, args=args_8e),
         {},
-        inputs,
-        "DiT-XL/2 + MoE (8专家)"
+        lambda: inputs,
+        "DiT-XL/2 + MoE (8专家, top-2)"
     )
     if result:
         results.append(result)
 
     # ============================================
-    # 2. Dense 模型对比 (当前项目)
+    # 2. Dense 模型对比 (当前项目, 使用wrapper)
     # ============================================
     print(f"\n{'='*70}")
     print("2. Dense 模型 (当前项目，无MoE)")
     print(f"{'='*70}")
 
-    inputs = create_dummy_inputs(base_args, use_force=True)
-    result = calculate_model_flops(
-        lambda **kwargs: moe_models['DiT-XL/2'](input_size=32, num_classes=1000, args=base_args),
+    inputs = create_dummy_inputs(base_args)
+    result = calculate_model_flops_with_wrapper(
+        lambda: moe_models['DiT-XL/2'](input_size=32, num_classes=1000, args=base_args),
         {},
-        inputs,
+        lambda: inputs,
         "DiT-XL/2 (Dense, 无MoE)"
     )
     if result:
@@ -204,7 +301,7 @@ def main():
 
         for model_key, model_name in models_to_test:
             if model_key in dense_models:
-                inputs = create_dummy_inputs(base_args, use_force=False)  # baselinepad不需要force_cond
+                inputs = create_dummy_inputs(base_args)  # 不需要force_cond
                 result = calculate_model_flops(
                     lambda **kwargs: dense_models[model_key](input_size=32, num_classes=1000, args=base_args),
                     {},
@@ -228,7 +325,7 @@ def main():
 
     # 计算相对差异
     if len(results) >= 2:
-        baseline = results[0]  # 4专家MoE作为基准
+        baseline = results[0]  # 4专家MoE (top-1)作为基准
         print(f"\n以 {baseline['name']} 为基准:")
         print('-' * 70)
         for r in results[1:]:
@@ -237,6 +334,19 @@ def main():
             print(f"{r['name']:<30}")
             print(f"  参数: {params_ratio:.2f}x ({'+' if params_ratio>1 else ''}{(params_ratio-1)*100:+.0f}%)")
             print(f"  FLOPs: {flops_ratio:.2f}x ({'+' if flops_ratio>1 else ''}{(flops_ratio-1)*100:+.0f}%)")
+
+    # 特别强调 Top-1 vs Top-2 的差异
+    top1_result = next((r for r in results if 'top-1' in r['name']), None)
+    top2_result = next((r for r in results if 'top-2' in r['name'] and '4专家' in r['name']), None)
+    if top1_result and top2_result:
+        print(f"\n{'='*70}")
+        print("Top-1 vs Top-2 路由对比 (4专家):")
+        print(f"{'='*70}")
+        print(f"Top-1: {top1_result['flops_g']:.2f} GFLOPs")
+        print(f"Top-2: {top2_result['flops_g']:.2f} GFLOPs")
+        print(f"差异: {top2_result['flops_g'] - top1_result['flops_g']:.2f} GFLOPs ({(top2_result['flops_g']/top1_result['flops_g'] - 1)*100:.1f}%)")
+        print(f"Top-1 节省: {(1 - top1_result['flops_g']/top2_result['flops_g'])*100:.1f}%")
+        print(f"{'='*70}")
 
     print(f"\n{'='*70}")
     print("说明:")

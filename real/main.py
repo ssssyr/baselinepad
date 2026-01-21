@@ -174,8 +174,8 @@ def create_debug_image(step, max_steps, current_pose, current_gripper, target_xy
     draw_text(f"RZ: {current_pose[5]:.4f}", y_offset)
 
     # 当前夹爪
-    gripper_status = "OPEN" if current_gripper > 0.5 else "CLOSED"
-    gripper_color = color_value if current_gripper > 0.5 else color_warning
+    gripper_status = "OPEN" if current_gripper > 0.9 else "CLOSED"
+    gripper_color = color_value if current_gripper > 0.9 else color_warning
     draw_text(f"Gripper: {current_gripper:.2f} ({gripper_status})", y_offset, gripper_color)
 
     # 位移差
@@ -318,55 +318,13 @@ def main():
             print("\n2. Loading AI Agent...")
             agent = build_agent()
 
-            # 3. Move to initial pose from CONFIG
-            print("\n3. Moving to initial pose from CONFIG...")
-            initial_pose = np.array(CONFIG["robot"]["initial_pose"])
-            print(f"Target initial pose: {initial_pose}")
-
-            # 获取当前位置
-            current_pose, _, _ = robot.get_tcp_pose_with_ts()
-            print(f"Current pose: {current_pose}")
-
-            # 检查每个维度，超出的移动到限制边界
-            safe_pose = initial_pose.copy()
-            workspace_limits = {
-                'x_min': -0.5, 'x_max': 0.5,
-                'y_min': -1, 'y_max': -0.5,
-                'z_min': 0.365,  'z_max': 0.8,
-            }
-
-            # 检查x维度，超出则限制到边界
-            if initial_pose[0] < workspace_limits['x_min']:
-                print(f"警告：X坐标 {initial_pose[0]:.3f} 低于最小值，限制到 {workspace_limits['x_min']}")
-                safe_pose[0] = workspace_limits['x_min']
-            elif initial_pose[0] > workspace_limits['x_max']:
-                print(f"警告：X坐标 {initial_pose[0]:.3f} 超过最大值，限制到 {workspace_limits['x_max']}")
-                safe_pose[0] = workspace_limits['x_max']
-
-            # 检查y维度，超出则限制到边界
-            if initial_pose[1] < workspace_limits['y_min']:
-                print(f"警告：Y坐标 {initial_pose[1]:.3f} 低于最小值，限制到 {workspace_limits['y_min']}")
-                safe_pose[1] = workspace_limits['y_min']
-            elif initial_pose[1] > workspace_limits['y_max']:
-                print(f"警告：Y坐标 {initial_pose[1]:.3f} 超过最大值，限制到 {workspace_limits['y_max']}")
-                safe_pose[1] = workspace_limits['y_max']
-
-            # 检查z维度，超出则限制到边界
-            if initial_pose[2] < workspace_limits['z_min']:
-                print(f"警告：Z坐标 {initial_pose[2]:.3f} 低于最小值，限制到 {workspace_limits['z_min']}")
-                safe_pose[2] = workspace_limits['z_min']
-            elif initial_pose[2] > workspace_limits['z_max']:
-                print(f"警告：Z坐标 {initial_pose[2]:.3f} 超过最大值，限制到 {workspace_limits['z_max']}")
-                safe_pose[2] = workspace_limits['z_max']
-
-            print(f"Safe pose to move: {safe_pose}")
-
-            robot.move_to_pose_sync(safe_pose)
-            # 初始夹爪状态：关闭
-            robot.set_gripper(0.0)  # Robot API: 0.0 = closed
-            print("Moved to initial pose successfully, gripper closed.")
-
             print("\nInitialization complete. Starting main control loop.")
+
+            # 创建图像保存目录（以第一步开始的时间命名）
+            image_save_dir = Path("/mnt/sda/syr/image") / time.strftime("%Y%m%d-%H%M%S")
+            image_save_dir.mkdir(parents=True, exist_ok=True)
+            print(f"Images will be saved to: {image_save_dir}")
+
             cv2.namedWindow('UR10 Diffusion Policy - Current + 3 Predicted Frames', cv2.WINDOW_NORMAL)
             cv2.resizeWindow('UR10 Diffusion Policy - Current + 3 Predicted Frames', 1400, 400)
 
@@ -397,8 +355,11 @@ def main():
                 # b. Decision: Get action from policy
                 # The agent needs state information in the correct format.
                 # This is a placeholder for the actual state construction based on run_metaworld.py
-                robot_state = np.concatenate([current_pose[:3], [current_gripper]])
-                
+                # gripper state: 0.0 (closed) or 1.0 (open), threshold=0.9
+                gripper_state = 1.0 if current_gripper > 0.9 else 0.0
+                robot_state = np.concatenate([current_pose[:3], [gripper_state]])
+                print(f"Gripper state for inference: current={current_gripper:.3f} → discretized={gripper_state:.1f} (threshold=0.9)")
+
                 with torch.no_grad():
                     # DiffusionAgent.action signature: action(self, text, rgb=None, depth=None, state=None, force=None)
                     samples, sample_a, _ = agent.action(
@@ -412,10 +373,7 @@ def main():
                 # c. Visualization: Decode and display predictions
                 # samples contains predicted latents for future frames
                 vis_image = agent.decode(rgb_image, samples, prefix="", save=False)
-                # Add step counter on image
                 vis_image = cv2.cvtColor(vis_image, cv2.COLOR_RGB2BGR)
-                cv2.putText(vis_image, f'Step: {step + 1}/{CONFIG["task"]["max_steps"]}',
-                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 cv2.imshow('UR10 Diffusion Policy - Current + 3 Predicted Frames', vis_image)
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
@@ -431,7 +389,7 @@ def main():
                 action_dim = getattr(agent.args, 'action_dim', 4)
                 a_seq = sample_a.reshape(action_steps, action_dim)
 
-                target = a_seq[0] / action_scale  # 第1帧 (索引0)
+                target = a_seq[1] / action_scale  # 第2帧 (索引1)
                 target_xyz, target_gripper = target[:3], float(target[3])
 
                 # Note: Model outputs are already in robot base frame (xyz, gripper)
@@ -464,6 +422,12 @@ def main():
                 )
                 cv2.imshow('Debug Info', debug_img)
                 cv2.waitKey(1)
+
+                # 每5步保存一次图像
+                if (step + 1) % 5 == 0:
+                    vis_image_path = image_save_dir / f"step_{step+1:03d}_vis.jpg"
+                    cv2.imwrite(str(vis_image_path), vis_image)
+                    print(f"Saved image to: {vis_image_path.name}")
 
                 # Combine with orientation from current pose to form target pose
                 target_pose = np.concatenate([target_xyz, current_pose[3:]])

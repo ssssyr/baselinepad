@@ -80,7 +80,7 @@ class GamepadHandler:
 
         hat_x, hat_y = self.hat_states.get(0, (0, 0))
         lin_vel[2] = hat_y * current_linear_speed
-        # ang_vel[2] = hat_x * self.angular_speed_max  # 十字键左右控制旋转（已禁用）
+        ang_vel[2] = hat_x * self.angular_speed_max  # 十字键左右控制旋转
 
         rx = -self.joystick.get_axis(self.axis_map['RIGHT_STICK_Y'])
         ry = self.joystick.get_axis(self.axis_map['RIGHT_STICK_X'])

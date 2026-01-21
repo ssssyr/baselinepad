@@ -319,7 +319,7 @@ def run_single_rollout(agent, task, selected_id, traj_idx, META_CONFIG, INSTRUCT
                     print(f"🧭 Full predicted action seq (xyzg per step):\n{np.array2string(a_seq, precision=3, floatmode='fixed')}")
                     print(f"🧭 Gripper seq: {np.array2string(a_seq[:,3], precision=3, floatmode='fixed')}, current gripper: {curr_gripper:.3f}")
 
-                target = a_seq[1] / agent.args.action_scale  # Use 2nd frame (index 1)
+                target = a_seq[0] / agent.args.action_scale  # Use 2nd frame (index 1)
                 target_xyz, target_gripper = target[:3], float(target[3])
             else:
                 target = sample_a / agent.args.action_scale

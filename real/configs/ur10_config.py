@@ -13,7 +13,7 @@ import numpy as np
 
 CONFIG = {
     "model": {
-        "ckpt_path": "/mnt/sda/syr/checkpoint/checkpoint0112/0090000.pt",
+        "ckpt_path": "/mnt/sda/syr/checkpoint/checkpoint0120/0230000.pt",
         "vae_path": "/home/syr/code/models/sd-vae-ft-mse",
         "clip_path": "/home/syr/code/models/clip-vit-base-patch32",
         "denoise_steps": "ddim16",
@@ -76,15 +76,15 @@ CONFIG = {
     "data_collection": {
         "high_freq_hz": 100,
         "low_freq_hz": 10,
-        "default_output_dir": "/mnt/sda/datasets/real_data/3",
+        "default_output_dir": "/mnt/sda/datasets/real_data/4",
     },
 
     "calibration": {
         "camera_to_base": np.eye(4).tolist(),
     },
     "task": {
-        "max_steps": 50,
-        "task_instruction": "Close drawer-type parts box.",
+        "max_steps": 200,
+        "task_instruction": "Dispense a suitable amount of hand sanitizer onto one hand from the press bottle.",
         "gripper_threshold": 0.75,
     },
     "force_stats": {
