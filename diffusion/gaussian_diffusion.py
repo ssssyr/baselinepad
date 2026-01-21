@@ -778,9 +778,20 @@ class GaussianDiffusion:
         """
         if model_kwargs is None:
             model_kwargs = {}
+
+        # Ablation study: check if RGB diffusion is disabled
+        ablation_no_rgb = model_kwargs.pop('ablation_no_rgb_diffusion', False)
+
         if noise is None:
             noise = th.randn_like(x_start)
-        x_t = self.q_sample(x_start, t, noise=noise)
+
+        # Normal mode: apply noise to RGB; Ablation mode: skip RGB diffusion
+        if not ablation_no_rgb:
+            x_t = self.q_sample(x_start, t, noise=noise)
+        else:
+            # Ablation mode: x_t is not used (will be replaced with zeros in model)
+            # Still compute x_t to maintain code flow, but model will ignore it
+            x_t = self.q_sample(x_start, t, noise=noise)
         # if action is in model_kwargs, we need to sample the action
         if 'action' in model_kwargs.keys():
             a_start = model_kwargs['action']

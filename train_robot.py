@@ -687,7 +687,8 @@ def main(args):
 
             model_kwargs = dict(
                 y=y,
-                x_cond=x_cond
+                x_cond=x_cond,
+                ablation_no_rgb_diffusion=getattr(args, 'ablation_no_rgb_diffusion', False)
             )
             if args.use_depth:
                 model_kwargs['depth_cond'] = depth_cond
@@ -713,11 +714,24 @@ def main(args):
 
             loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
             loss = loss_dict["loss"].mean()
+
+            # Ablation study: get flag for skipping RGB loss
+            ablation_no_rgb = getattr(args, 'ablation_no_rgb_diffusion', False)
+
             if args.action_steps > 0 and "loss_a" in loss_dict:
                 a_coffi = 1.0 if train_steps > args.action_loss_start else 0.0
-                loss = loss + loss_dict["loss_a"].mean() * args.action_loss_lambda * a_coffi
+                if not ablation_no_rgb:
+                    loss = loss + loss_dict["loss_a"].mean() * args.action_loss_lambda * a_coffi
+                else:
+                    # Ablation mode: only action loss, no RGB loss
+                    loss = loss_dict["loss_a"].mean() * args.action_loss_lambda * a_coffi
+
             if args.use_depth and "loss_depth" in loss_dict:
-                loss = loss + loss_dict["loss_depth"].mean()
+                if not ablation_no_rgb:
+                    loss = loss + loss_dict["loss_depth"].mean()
+                else:
+                    # Ablation mode: depth loss is the base
+                    loss = loss + loss_dict["loss_depth"].mean()
 
             moe_aux_metric = None
             if getattr(args, "use_moe", False):
@@ -1025,7 +1039,8 @@ def main(args):
 
                         eval_model_kwargs = dict(
                             y=y_b,
-                            x_cond=input_img
+                            x_cond=input_img,
+                            ablation_no_rgb_diffusion=getattr(args, 'ablation_no_rgb_diffusion', False)
                         )
                         if args.use_depth:
                             eval_model_kwargs['depth_cond'] = input_depth
@@ -1224,6 +1239,10 @@ if __name__ == "__main__":
     # Loss
     parser.add_argument("--action-loss-lambda", type=float)
     parser.add_argument("--action-loss-start", type=int)
+
+    # Ablation study
+    parser.add_argument("--ablation-no-rgb-diffusion", action="store_true",
+                        help="Ablation: disable RGB diffusion (RGB as condition only)")
 
     # MoE
     parser.add_argument("--use-moe", action="store_true")

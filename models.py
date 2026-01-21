@@ -652,8 +652,19 @@ class DiT(nn.Module):
         action: (N, n_step, a_dim)
         output_type: 'image' or 'action'
         """
+        # Ablation study: disable RGB diffusion
+        ablation_no_rgb = getattr(self.args, 'ablation_no_rgb_diffusion', False)
+
         if x_cond is not None:
-            x = torch.cat([x, x_cond], dim=1) #(N, 2C, H, W) C with noise, C ture value
+            if ablation_no_rgb:
+                # Ablation mode: fill RGB with zeros, only use condition
+                B = x_cond.shape[0]
+                zeros = torch.zeros(B, 4 * self.args.predict_horizon, *x_cond.shape[2:],
+                                   device=x_cond.device, dtype=x_cond.dtype)
+                x = torch.cat([zeros, x_cond], dim=1)  # (N, 4*T+4, H, W)
+            else:
+                # Normal mode: noisy future frames + current frame
+                x = torch.cat([x, x_cond], dim=1) #(N, 2C, H, W) C with noise, C ture value
         
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         if self.args.action_steps>0:
