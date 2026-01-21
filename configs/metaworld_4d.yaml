@@ -96,6 +96,9 @@ components:
   action_loss_lambda: 2.0   # Weight for the action prediction loss
   action_loss_start: 0     # Start applying action loss from step 0
 
+  # Ablation Study - Disable RGB diffusion
+  ablation_no_rgb_diffusion: true  # RGB as condition only, no prediction
+
 # ======================================================
 #                  MoE Settings
 # ======================================================
