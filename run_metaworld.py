@@ -307,7 +307,9 @@ def run_single_rollout(agent, task, selected_id, traj_idx, META_CONFIG, INSTRUCT
                 samples, sample_a, _ = agent.action(text, img, None, state4, force)
 
             predict_img = None
-            if save_video and visualize_prediction:
+            # Skip RGB visualization for ablation mode (model not trained to predict RGB)
+            is_ablation_mode = getattr(agent.args, 'ablation_no_rgb_diffusion', False)
+            if save_video and visualize_prediction and not is_ablation_mode:
                 with torch.no_grad():
                     predict_img = agent.decode_rgb(img, samples)
                 predict_img = add_bound(predict_img)
