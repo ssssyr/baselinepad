@@ -247,6 +247,7 @@ class DiffusionAgent():
         model_kwargs = {
             "y": y,
             "x_cond": x_cond,
+            "ablation_no_rgb_diffusion": getattr(self.args, 'ablation_no_rgb_diffusion', False),
             "noised_action": z_a,
             "depth_cond": depth_cond,
             "noised_depth": z_d,
