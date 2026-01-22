@@ -216,7 +216,9 @@ class DiffusionAgent():
 
         t = self.args.predict_horizon
         latent_size = self.args.image_size // 8
-        z = torch.randn(1, self.model.in_channels*t, latent_size, latent_size).to(self.device)
+        # Calculate correct z channels: 4*(1 + predict_horizon) for dynamics, else 4*2
+        z_channels = self.model.in_channels * (2 if not self.args.dynamics else 1 + self.args.predict_horizon)
+        z = torch.randn(1, z_channels, latent_size, latent_size).to(self.device)
         print(f"🎲 Initial noise z mean: {z.mean():.6f}, std: {z.std():.6f}")
 
         # if self.args has arribute action_condition and self.args.action_condition:

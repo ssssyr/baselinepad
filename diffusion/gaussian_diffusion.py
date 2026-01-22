@@ -274,6 +274,9 @@ class GaussianDiffusion:
         if model_kwargs is None:
             model_kwargs = {}
 
+        # Remove ablation flag before passing to model (only for training, not inference)
+        model_kwargs.pop('ablation_no_rgb_diffusion', None)
+
         B, C = x.shape[:2]
         assert t.shape == (B,)
         model_output = model(x, t, **model_kwargs)
