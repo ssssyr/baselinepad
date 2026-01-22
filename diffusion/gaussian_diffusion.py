@@ -275,7 +275,7 @@ class GaussianDiffusion:
             model_kwargs = {}
 
         # Remove ablation flag before passing to model (only for training, not inference)
-        model_kwargs.pop('ablation_no_rgb_diffusion', None)
+        ablation_mode = model_kwargs.pop('ablation_no_rgb_diffusion', False)
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
@@ -287,8 +287,15 @@ class GaussianDiffusion:
             extra2 = None
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
-            assert model_output.shape == (B, C * 2, *x.shape[2:])
-            model_output, model_var_values = th.split(model_output, C, dim=1)
+            # For ablation mode, model outputs in_channels*2*predict_horizon instead of C*2
+            expected_C = C if not ablation_mode else 4 * 2 * 3  # ablation mode expects predict_horizon based output
+            if not ablation_mode:
+                assert model_output.shape == (B, C * 2, *x.shape[2:]), f"Expected {(B, C * 2, *x.shape[2:])}, got {model_output.shape}"
+                model_output, model_var_values = th.split(model_output, C, dim=1)
+            else:
+                # Ablation mode: split differently
+                actual_C = model_output.shape[1] // 2
+                model_output, model_var_values = th.split(model_output, actual_C, dim=1)
             min_log = _extract_into_tensor(self.posterior_log_variance_clipped, t, x.shape)
             max_log = _extract_into_tensor(np.log(self.betas), t, x.shape)
             # The model_var_values is [-1, 1] for [min_var, max_var].

@@ -216,8 +216,14 @@ class DiffusionAgent():
 
         t = self.args.predict_horizon
         latent_size = self.args.image_size // 8
-        # Calculate correct z channels: 4*(1 + predict_horizon) for dynamics, else 4*2
-        z_channels = self.model.in_channels * (2 if not self.args.dynamics else 1 + self.args.predict_horizon)
+        # For ablation mode, use out_channels directly (model not trained for full RGB prediction)
+        is_ablation = getattr(self.args, 'ablation_no_rgb_diffusion', False)
+        if is_ablation:
+            # Ablation mode: use model's out_channels (4*2*predict_horizon)
+            z_channels = self.model.in_channels * 2 * self.args.predict_horizon
+        else:
+            # Normal mode: 4*(1+predict_horizon)
+            z_channels = self.model.in_channels * (2 if not self.args.dynamics else 1 + self.args.predict_horizon)
         z = torch.randn(1, z_channels, latent_size, latent_size).to(self.device)
         print(f"🎲 Initial noise z mean: {z.mean():.6f}, std: {z.std():.6f}")
 

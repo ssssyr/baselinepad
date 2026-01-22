@@ -356,12 +356,29 @@ class FinalLayer(nn.Module):
             )
 
     def forward(self, x, c):
+        # Check if in ablation mode
+        ablation_no_rgb = getattr(self.args, 'ablation_no_rgb_diffusion', False)
+
         # rgb
         start,end = self.args.start_idx[0],self.args.end_idx[0]
         rgb = x[:, start:end]
         shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
         rgb = modulate(self.norm_final(rgb), shift, scale)
         rgb = self.linear(rgb)
+
+        # In ablation mode, pad rgb to match expected input shape (C * 2)
+        # This is needed for diffusion sampling compatibility
+        if ablation_no_rgb:
+            B, N, D = rgb.shape
+            # Expected output size is input_size (C*2), but we only have predict_horizon based output
+            # Calculate padding needed: (C*2) - current_size
+            expected_size = self.args.in_channels * 2  # 4 * 2 = 8 per patch position
+            current_size = rgb.shape[-1]
+            if current_size < expected_size:
+                padding_size = expected_size - current_size
+                padding = torch.zeros(B, N, padding_size, device=rgb.device, dtype=rgb.dtype)
+                rgb = torch.cat([rgb, padding], dim=-1)
+
         if not (self.use_action or self.use_depth):
             return rgb
 
