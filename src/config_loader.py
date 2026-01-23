@@ -19,17 +19,17 @@ class ConfigLoader:
     def load_yaml_config(self, config_path: str) -> Dict[str, Any]:
         """Load configuration from YAML file."""
         config_path = Path(config_path)
-        
-        
+
         if not config_path.is_absolute():
-            config_path = self.config_dir / config_path
-            
+            if not config_path.exists():
+                config_path = self.config_dir / config_path
+
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
-            
+
         with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
-            
+
         return config or {}
     
     def flatten_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
