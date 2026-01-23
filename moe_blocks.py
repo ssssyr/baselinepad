@@ -7,7 +7,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-# Removed gradient tracking for simplified open-source version
 GRAD_TRACKER_AVAILABLE = False
 def record_routing_info(*args, **kwargs):
     pass
@@ -37,7 +36,6 @@ class MoEGate(nn.Module):
         self.scoring_func = "softmax"
         self.alpha = aux_loss_alpha
         self.seq_aux = False
-        # Normalize the top-k probabilities so they sum to 1 after truncation.
         self.norm_topk_prob = True
         self.gating_dim = embed_dim
         self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.gating_dim)))
@@ -90,8 +88,6 @@ class MoEGate(nn.Module):
             scores_for_aux = scores
             topk_idx_for_aux_loss = topk_idx.view(-1, self.top_k)
 
-            # Exclude action tokens (modality_id == 1) from load-balancing aux loss so
-            # action embeddings are not driven by router regularization.
             if not self.seq_aux and flat_modality is not None:
                 keep_mask = flat_modality != 1
                 if keep_mask.any():
@@ -157,7 +153,6 @@ class MoeMLP(nn.Module):
         self.fc2 = nn.Linear(intermediate_size, hidden_size, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Pretraining TP path removed to keep parity with DenseGeluMLP and simplify init sharing.
         return self.fc2(self.act(self.fc1(x)))
 
 
@@ -166,7 +161,6 @@ class DenseGeluMLP(nn.Module):
 
     def __init__(self, hidden_size: int, intermediate_size: int):
         super().__init__()
-        # Keep bias to align with the original dense MLP and avoid systematic shifts.
         self.fc1 = nn.Linear(hidden_size, intermediate_size, bias=True)
         self.act = _approx_gelu()
         self.fc2 = nn.Linear(intermediate_size, hidden_size, bias=True)
@@ -196,7 +190,7 @@ class SparseMoeBlock(nn.Module):
         super().__init__()
         self.num_experts = num_experts
         self.num_experts_per_tok = num_experts_per_tok
-        self.collect_stats = False  # Disabled for simplified open-source version
+        self.collect_stats = False
         self.layer_idx = layer_idx
         intermediate_size = int(mlp_ratio * embed_dim)
         self.experts = nn.ModuleList(
@@ -221,7 +215,6 @@ class SparseMoeBlock(nn.Module):
         self.n_shared_experts = n_shared_experts
         if self.n_shared_experts:
             shared_intermediate = embed_dim * self.n_shared_experts
-            # Use GELU dense FFN so shared path matches the original dense model.
             self.shared_experts = DenseGeluMLP(
                 hidden_size=embed_dim,
                 intermediate_size=shared_intermediate,
@@ -256,11 +249,10 @@ class SparseMoeBlock(nn.Module):
             self.last_aux_loss = None
             output = self.moe_infer(flat_states, flat_topk_idx, topk_weight.view(-1, 1)).view(*orig_shape)
 
-        # All tokens (including action) now go through normal MoE routing
         if self.shared_experts is not None:
             output = output + self.shared_experts(identity)
 
-        self.last_routing_stats = None  # Disabled for simplified version
+        self.last_routing_stats = None
         return output
 
     @torch.no_grad()

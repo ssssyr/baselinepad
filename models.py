@@ -1,13 +1,13 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
 
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-# --------------------------------------------------------
-# References:
-# GLIDE: https://github.com/openai/glide-text2im
-# MAE: https://github.com/facebookresearch/mae/blob/main/models_mae.py
-# --------------------------------------------------------
+
+
+
+
+
+
+
+
+
 
 import torch
 import torch.nn as nn
@@ -40,28 +40,28 @@ def apply_expert_ln(x, modality_ids, experts):
     if modality_ids is None:
         modality_ids = torch.zeros((B, N), dtype=torch.long, device=x.device)
 
-    # Clamp modality_ids to valid range [0, num_modalities-1] to avoid index errors
+    
     modality_ids = torch.clamp(modality_ids, 0, num_modalities - 1)
 
-    # Start with zeros and fill in normalized tokens per modality
+    
     output = torch.zeros_like(x)
 
     for m in range(num_modalities):
         mask = (modality_ids == m)
         if mask.any():
-            # Select tokens for this modality
-            tokens = x[mask]  # (K, D) where K is number of tokens with this modality
-            # Apply expert LayerNorm
+            
+            tokens = x[mask]  
+            
             normalized = experts[m](tokens)
-            # Scatter back
+            
             output[mask] = normalized
 
     return output
 
 
-#################################################################################
-#               Embedding Layers for Timesteps and Class Labels                 #
-#################################################################################
+
+
+
 
 class Attention(nn.Module):
     def __init__(
@@ -144,7 +144,7 @@ class TimestepEmbedder(nn.Module):
         :param max_period: controls the minimum frequency of the embeddings.
         :return: an (N, D) Tensor of positional embeddings.
         """
-        # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
+        
         half = dim // 2
         freqs = torch.exp(
             -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
@@ -197,23 +197,23 @@ class LanguageEmbedder(nn.Module):
     """
     def __init__(self, hidden_size,args):
         super().__init__()
-        # from transformers import AutoTokenizer, CLIPTextModelWithProjection
-        # self.model = CLIPTextModelWithProjection.from_pretrained(args.clip_path)
-        # self.tokenizer = AutoTokenizer.from_pretrained(args.clip_path)
+        
+        
+        
 
-        self.embedding_table = nn.Linear(512, hidden_size) # 512 is clip embedding size
+        self.embedding_table = nn.Linear(512, hidden_size) 
 
     def forward(self, labels, train, force_drop_ids=None):
-        # with torch.no_grad():
-        #     inputs = self.tokenizer(labels, padding=True, return_tensors="pt")
-        #     outputs = self.model(**inputs) 
-        #     text_embeds = outputs.text_embeds # (B,512)
-        embeddings = self.embedding_table(labels) # (B, hidden_size)
+        
+        
+        
+        
+        embeddings = self.embedding_table(labels) 
         return embeddings
 
-#################################################################################
-#                                 Core DiT Model                                #
-#################################################################################
+
+
+
 
 class DiTBlock(nn.Module):
     """
@@ -234,13 +234,13 @@ class DiTBlock(nn.Module):
         num_modalities=3,
         use_adamn=False,
         collect_stats=False,
-        layer_idx=-1,  # Add layer index for gradient tracking
+        layer_idx=-1,  
         **block_kwargs,
     ):
         super().__init__()
         self.use_adamn = use_adamn
         if use_adamn:
-            # Create per-modality expert LayerNorms with learnable affine params
+            
             self.norm1_experts = nn.ModuleList([
                 nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
                 for _ in range(num_modalities)
@@ -250,7 +250,7 @@ class DiTBlock(nn.Module):
                 for _ in range(num_modalities)
             ])
         else:
-            # Shared LayerNorm without affine parameters (original behavior)
+            
             self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
             self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
@@ -268,7 +268,7 @@ class DiTBlock(nn.Module):
                 modality_bias_init=modality_bias_init,
                 num_modalities=num_modalities,
                 collect_stats=collect_stats,
-                layer_idx=layer_idx,  # Pass layer index for gradient tracking
+                layer_idx=layer_idx,  
             )
         else:
             mlp_hidden_dim = int(hidden_size * mlp_ratio)
@@ -283,7 +283,7 @@ class DiTBlock(nn.Module):
     def forward(self, x, c, modality_ids=None):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
 
-        # Apply expert LayerNorms if enabled, otherwise use shared norm
+        
         if self.use_adamn:
             normed_x = apply_expert_ln(x, modality_ids, self.norm1_experts)
         else:
@@ -303,9 +303,9 @@ class DiTBlock(nn.Module):
             x = x + gate_mlp.unsqueeze(1) * self.mlp(mlp_input)
         if self.use_moe:
             self.last_aux_loss = getattr(self.mlp, "last_aux_loss", None)
-            # propagate lightweight routing stats (coverage/hit rate) up to the block for logging
+            
             self.last_routing_stats = getattr(self.mlp, "last_routing_stats", None)
-            # store gate scores for analysis
+            
             self.last_gate_scores = self.mlp.get_gate_scores()
         else:
             self.last_aux_loss = None
@@ -340,11 +340,11 @@ class FinalLayer(nn.Module):
             else:
                 output_size = args.action_dim*(args.action_steps)*2
             self.a_linear = nn.Linear(hidden_size,output_size,bias=True)
-            # self.a_head = nn.Sequential(
-            #     nn.Linear(hidden_size, hidden_size, bias=True),
-            #     nn.SiLU(),
-            #     nn.Linear(hidden_size, args.action_dim*2, bias=True)
-            # )
+            
+            
+            
+            
+            
 
         self.use_depth = args.use_depth
         if args.use_depth:
@@ -356,7 +356,7 @@ class FinalLayer(nn.Module):
             )
 
     def forward(self, x, c):
-        # rgb
+        
         start,end = self.args.start_idx[0],self.args.end_idx[0]
         rgb = x[:, start:end]
         shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
@@ -372,7 +372,7 @@ class FinalLayer(nn.Module):
             shift, scale = self.a_adaLN_modulation(c).chunk(2, dim=1)
             a = modulate(self.a_norm_final(x[:, start:end]), shift, scale)
             a = self.a_linear(a)
-            # a = self.a_head(x[:, start:end])
+            
         if self.use_depth:
             start,end = self.args.start_idx[3],self.args.end_idx[3]
             d = x[:, start:end]
@@ -403,7 +403,7 @@ class DiT(nn.Module):
         super().__init__()
         self.learn_sigma = learn_sigma
         self.in_channels = in_channels
-        # self.out_channels = in_channels * 2 if learn_sigma else in_channels
+        
         self.out_channels = in_channels * 2 if not args.dynamics else in_channels * 2 * args.predict_horizon
         self.patch_size = patch_size
         self.num_heads = num_heads
@@ -427,8 +427,8 @@ class DiT(nn.Module):
         self.force_dim = int(getattr(args, "force_dim", 6))
         self.args.use_force = self.use_force
         self.args.force_dim = self.force_dim
-        # 只为实际使用的模态创建 experts：rgb(0) + action(1) + force?(2) + depth?(2/3)
-        base_modalities = 2  # rgb + action
+        
+        base_modalities = 2  
         self.moe_num_modalities = base_modalities + int(self.use_force) + int(getattr(args, "use_depth", False))
         self.moe_modality_bias_init = None
         if self.use_modality_bias:
@@ -436,8 +436,8 @@ class DiT(nn.Module):
             if self.modality_bias_strength_action != 0.0:
                 bias[1, 0] = self.modality_bias_strength_action
             if self.modality_bias_strength_depth != 0.0 and getattr(args, "use_depth", False):
-                # depth modality id = 2 if (rgb, action, force) or 3 if (rgb, action, depth)
-                # 实际上 depth 总是排在最后：force 存在时 id=3，否则 id=2
+                
+                
                 depth_modality_id = 2 + int(self.use_force)
                 bias[depth_modality_id, 1] = self.modality_bias_strength_depth
             self.moe_modality_bias_init = bias
@@ -475,7 +475,7 @@ class DiT(nn.Module):
             self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
 
         num_patches = self.x_embedder.num_patches
-        # Will use fixed sin-cos embedding:
+        
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
         rgb_l = num_patches
@@ -490,13 +490,13 @@ class DiT(nn.Module):
         if args.attn_mask:
             token_num = rgb_l + a_l + force_l + depth_l
             attn_mask = torch.ones((token_num, token_num), dtype=torch.bool)
-            # RGB cannot see subsequent tokens
+            
             attn_mask[:rgb_l, rgb_l:] = False
-            # Force cannot see any other modality (unidirectional mask)
+            
             if self.use_force:
                 force_start = rgb_l + a_l
                 force_end = force_start + force_l
-                # Force cannot see RGB, Action, Depth
+                
                 attn_mask[force_start:force_end, :force_start] = False
                 if args.use_depth and depth_l > 0:
                     depth_start = force_end
@@ -521,7 +521,7 @@ class DiT(nn.Module):
                 num_modalities=self.moe_num_modalities,
                 use_adamn=self.use_adamn,
                 collect_stats=self.collect_stats,
-                layer_idx=layer_idx,  # Pass layer index for gradient tracking
+                layer_idx=layer_idx,  
             )
         )
         self.blocks = nn.ModuleList(blocks)
@@ -529,7 +529,7 @@ class DiT(nn.Module):
         self.initialize_weights()
 
     def initialize_weights(self):
-        # Initialize transformer layers:
+        
         def _basic_init(module):
             if isinstance(module, nn.Linear):
                 torch.nn.init.xavier_uniform_(module.weight)
@@ -537,24 +537,24 @@ class DiT(nn.Module):
                     nn.init.constant_(module.bias, 0)
         self.apply(_basic_init)
 
-        # Initialize (and freeze) pos_embed by sin-cos embedding:
+        
         pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.x_embedder.num_patches ** 0.5))
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         if self.args.use_depth:
-            # pos_embed = get_2d_sincos_pos_embed(self.d_pos_embed.shape[-1], int(self.d_num_patches ** 0.5))
+            
             ratio = self.d_patch_size // self.patch_size
             l = int(self.x_embedder.num_patches ** 0.5)
             pos_embed = pos_embed.reshape([l,l,self.pos_embed.shape[-1]])[::ratio,::ratio,:]
             pos_embed = pos_embed.reshape([-1,self.pos_embed.shape[-1]])
             self.d_pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
-        # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
+        
         w = self.x_embedder.proj.weight.data
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
         nn.init.constant_(self.x_embedder.proj.bias, 0)
 
-        # Initialize a_embedder
+        
         if self.args.action_steps>0:
             nn.init.xavier_uniform_(self.a_embedder.weight)
             nn.init.constant_(self.a_embedder.bias, 0)
@@ -568,24 +568,24 @@ class DiT(nn.Module):
         if self.use_force:
             nn.init.xavier_uniform_(self.force_embedder.weight)
             nn.init.constant_(self.force_embedder.bias, 0)
-            # Use fixed sin-cos positional embedding (like RGB/depth/action)
+            
             pos_h = self.f_pos_embed.shape[-1]
             f_pos_embed = get_1d_sincos_pos_embed_from_grid(pos_h, np.array([0], dtype=np.float32))
             self.f_pos_embed.data.copy_(torch.from_numpy(f_pos_embed).float().unsqueeze(0))
 
-        # Initialize label embedding table:
+        
         nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02)
 
-        # Initialize timestep embedding MLP:
+        
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
 
-        # Zero-out adaLN modulation layers in DiT blocks:
+        
         for block in self.blocks:
             nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
 
-        # Zero-out output layers:
+        
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].bias, 0)
         nn.init.constant_(self.final_layer.linear.weight, 0)
@@ -596,9 +596,9 @@ class DiT(nn.Module):
         x: (N, T, patch_size**2 * C)
         imgs: (N, H, W, C)
         """
-        # c = self.out_channels
-        # c = self.in_channels * 2 * self.args.predict_horizon
-        # p = self.x_embedder.patch_size[0]
+        
+        
+        
         in_channels = self.in_channels if in_channels is None else in_channels
         patch_size = self.patch_size if patch_size is None else patch_size
 
@@ -612,29 +612,29 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
     
-    # def unpatchify(self, x):
-    #     """
-    #     x: (N, T, patch_size**2 * C* t)
-    #     imgs: (N, H, W, C)
-    #     """
-    #     # split x to t part in the last dim
-    #     d = self.patch_size ** 2*self.in_channels*2
-    #     xs = torch.split(x, d, dim=-1)
-    #     img_mean, img_std = [], []
-    #     for x in xs:
-    #         # c = self.out_channels
-    #         c = self.in_channels*2
-    #         p = self.x_embedder.patch_size[0]
-    #         h = w = int(x.shape[1] ** 0.5)
-    #         assert h * w == x.shape[1]
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
-    #         x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
-    #         x = torch.einsum('nhwpqc->nchpwq', x)
-    #         img = x.reshape(shape=(x.shape[0], c, h * p, h * p))
-    #         img_mean.append(img[:,:self.in_channels])
-    #         img_std.append(img[:,self.in_channels:])
-    #     imgs = torch.cat(img_mean+img_std, dim=1)
-    #     return imgs
+    
+    
+    
+    
+    
+    
+    
     
     def ckpt_wrapper(self, module):
         def ckpt_forward(x, c, modality_ids):
@@ -653,15 +653,15 @@ class DiT(nn.Module):
         output_type: 'image' or 'action'
         """
         if x_cond is not None:
-            x = torch.cat([x, x_cond], dim=1) #(N, 2C, H, W) C with noise, C ture value
+            x = torch.cat([x, x_cond], dim=1) 
         
-        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        x = self.x_embedder(x) + self.pos_embed  
         if self.args.action_steps>0:
-            # TODO: action_pos_embed current is just learnable parameters
+            
             if self.args.action_condition:
                 noised_action = torch.cat([noised_action,action_cond],dim=-1)
-            a = self.a_embedder(noised_action)+self.a_pos_embed # (N, action_steps, D)
-            x = torch.cat([x,a],dim=1) # (N, T + action_step, D)
+            a = self.a_embedder(noised_action)+self.a_pos_embed 
+            x = torch.cat([x,a],dim=1) 
         if self.use_force:
             if force_cond is None:
                 force_cond = torch.zeros((x.shape[0], 1, self.force_dim), device=x.device, dtype=x.dtype)
@@ -675,7 +675,7 @@ class DiT(nn.Module):
             noised_depth = torch.cat([noised_depth,depth_cond],dim=1)
             d = self.d_embedder(noised_depth) + self.d_pos_embed
             x = torch.cat([x,d],dim=1)
-            # print("x_shape",x.shape)
+            
         modality_ids = torch.zeros((x.shape[0], x.shape[1]), device=x.device, dtype=torch.long)
         if self.args.action_steps>0:
             modality_ids[:, self.args.start_idx[1]:self.args.end_idx[1]] = 1
@@ -685,40 +685,40 @@ class DiT(nn.Module):
             depth_modality_id = 3 if self.use_force else 2
             modality_ids[:, self.args.start_idx[3]:self.args.end_idx[3]] = depth_modality_id
 
-        t = self.t_embedder(t)                   # (N, D)
-        y = self.y_embedder(y, self.training)    # (N, D)
-        c = t + y                                # (N, D)
+        t = self.t_embedder(t)                   
+        y = self.y_embedder(y, self.training)    
+        c = t + y                                
         for block in self.blocks:
             if self.args.ckpt_wrapper:
                 x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c, modality_ids, use_reentrant=False)
             else:
-                x = block(x, c, modality_ids)   # (N, T, D)
-        x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
-        # print("x_shape", x.shape)
+                x = block(x, c, modality_ids)   
+        x = self.final_layer(x, c)                
+        
         if self.args.action_steps>0 or self.args.use_depth:
             x, a, d = x
             x = self.unpatchify(x)
             if d is not None:
                 d = self.unpatchify(d, in_channels=self.d_in_channels, patch_size=self.d_patch_size)
-            # print("x_shape", x.shape, d.shape)
-            # print(a)
-            return (x,a,d)                 # (N, out_channels, H, W), (N, action_steps, action_dim)
+            
+            
+            return (x,a,d)                 
         else:
-            x = self.unpatchify(x)                   # (N, out_channels, H, W)
+            x = self.unpatchify(x)                   
             return x
 
     def forward_with_cfg(self, x, t, y, cfg_scale, x_cond=None):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
-        # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
+        
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
         model_out = self.forward(combined, t, y, x_cond=x_cond)
-        # For exact reproducibility reasons, we apply classifier-free guidance on only
-        # three channels by default. The standard approach to cfg applies it to all channels.
-        # This can be done by uncommenting the following line and commenting-out the line following that.
-        # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
+        
+        
+        
+        
         eps, rest = model_out[:, :3], model_out[:, 3:]
         cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
         half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
@@ -750,10 +750,10 @@ class DiT(nn.Module):
         return None
 
 
-#################################################################################
-#                   Sine/Cosine Positional Embedding Functions                  #
-#################################################################################
-# https://github.com/facebookresearch/mae/blob/main/util/pos_embed.py
+
+
+
+
 
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0):
     """
@@ -763,7 +763,7 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=
     """
     grid_h = np.arange(grid_size, dtype=np.float32)
     grid_w = np.arange(grid_size, dtype=np.float32)
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    grid = np.meshgrid(grid_w, grid_h)  
     grid = np.stack(grid, axis=0)
 
     grid = grid.reshape([2, 1, grid_size, grid_size])
@@ -776,11 +776,11 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     assert embed_dim % 2 == 0
 
-    # use half of dimensions to encode grid_h
-    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
-    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
+    
+    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  
+    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  
 
-    emb = np.concatenate([emb_h, emb_w], axis=1) # (H*W, D)
+    emb = np.concatenate([emb_h, emb_w], axis=1) 
     return emb
 
 
@@ -793,21 +793,21 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     assert embed_dim % 2 == 0
     omega = np.arange(embed_dim // 2, dtype=np.float64)
     omega /= embed_dim / 2.
-    omega = 1. / 10000**omega  # (D/2,)
+    omega = 1. / 10000**omega  
 
-    pos = pos.reshape(-1)  # (M,)
-    out = np.einsum('m,d->md', pos, omega)  # (M, D/2), outer product
+    pos = pos.reshape(-1)  
+    out = np.einsum('m,d->md', pos, omega)  
 
-    emb_sin = np.sin(out) # (M, D/2)
-    emb_cos = np.cos(out) # (M, D/2)
+    emb_sin = np.sin(out) 
+    emb_cos = np.cos(out) 
 
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+    emb = np.concatenate([emb_sin, emb_cos], axis=1)  
     return emb
 
 
-#################################################################################
-#                                   DiT Configs                                  #
-#################################################################################
+
+
+
 
 def DiT_XL_2(**kwargs):
     return DiT(depth=28, hidden_size=1152, patch_size=2, num_heads=16, **kwargs)

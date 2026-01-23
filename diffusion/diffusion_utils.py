@@ -1,7 +1,7 @@
-# Modified from OpenAI's diffusion repos
-#     GLIDE: https://github.com/openai/glide-text2im/blob/main/glide_text2im/gaussian_diffusion.py
-#     ADM:   https://github.com/openai/guided-diffusion/blob/main/guided_diffusion
-#     IDDPM: https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/gaussian_diffusion.py
+
+
+
+
 
 import torch as th
 import numpy as np
@@ -20,8 +20,8 @@ def normal_kl(mean1, logvar1, mean2, logvar2):
             break
     assert tensor is not None, "at least one argument must be a Tensor"
 
-    # Force variances to be Tensors. Broadcasting helps convert scalars to
-    # Tensors, but it does not work for th.exp().
+    
+    
     logvar1, logvar2 = [
         x if isinstance(x, th.Tensor) else th.tensor(x).to(tensor)
         for x in (logvar1, logvar2)

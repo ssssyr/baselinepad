@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Convert npz format robot data to training format.
 
@@ -50,14 +50,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-# ==================== Image Preprocessing ====================
+
 
 def resize_image(pil_image, image_size):
     """Resize image to the specified size (stretch/squash to fit, preserving all content)."""
     return pil_image.resize((image_size, image_size), resample=Image.BICUBIC)
 
 
-# ==================== NPZ Data Reader ====================
+
 
 class NPZDataReader:
     """Read robot data from npz files."""
@@ -94,7 +94,7 @@ class NPZDataReader:
         }
 
 
-# ==================== Main Converter ====================
+
 
 class NPZDataConverter:
     """Convert npz format robot data to training format."""
@@ -108,18 +108,18 @@ class NPZDataConverter:
         self.device = f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu"
         self.multi_task = args.multi_task
 
-        # Setup output directory
+        
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # Initialize components (will be set per task in multi-task mode)
+        
         self.npz_reader = None
         self.current_task_dir = None
 
-        # Setup models
+        
         self._setup_models()
         self._setup_transform()
 
-        # Force stats
+        
         self.force_stats = {"count": 0, "mean": np.zeros(6, dtype=np.float64), "m2": np.zeros(6, dtype=np.float64)}
 
     def _setup_for_task(self, task_dir: str, instruction: str):
@@ -128,7 +128,7 @@ class NPZDataConverter:
         self.instruction = instruction
         self.npz_reader = NPZDataReader(task_dir)
 
-        # Encode instruction
+        
         with torch.no_grad():
             text_inputs = self.clip_tokenizer([instruction], padding=True, return_tensors="pt").to(self.device)
             self.text_embed = self.clip_model(**text_inputs).text_embeds.cpu().numpy()
@@ -169,7 +169,7 @@ class NPZDataConverter:
         with torch.no_grad():
             latent = self.vae.encode(img_tensor).latent_dist.sample().mul_(0.18215)
 
-        return latent.cpu().numpy()  # (1, 4, 32, 32)
+        return latent.cpu().numpy()  
 
     def _get_task_dirs(self) -> List[Tuple[str, str]]:
         """Get list of (task_dir, instruction) tuples.
@@ -180,15 +180,15 @@ class NPZDataConverter:
         if not self.multi_task:
             return [(self.input_dir, self.instruction)]
 
-        # Multi-task mode: scan subdirectories
+        
         tasks = []
         for item in os.listdir(self.input_dir):
             item_path = os.path.join(self.input_dir, item)
             if os.path.isdir(item_path):
-                # Check if it has npz files
+                
                 npz_files = [f for f in os.listdir(item_path) if f.endswith('.npz')]
                 if npz_files:
-                    # Use folder name as instruction
+                    
                     tasks.append((item_path, item))
                     logger.info(f"Found task: {item} -> {item_path} ({len(npz_files)} episodes)")
 
@@ -213,52 +213,52 @@ class NPZDataConverter:
                 logger.info(f"  Directory: {task_dir}")
                 logger.info(f"{'='*60}")
 
-                # Setup for this task
+                
                 self._setup_for_task(task_dir, instruction)
 
                 for ep_idx in range(self.npz_reader.num_episodes):
                     episode_id = self.npz_reader.npz_files[ep_idx].replace('.npz', '')
                     logger.info(f"Processing episode {ep_idx+1}/{self.npz_reader.num_episodes}: {episode_id}")
 
-                    # Load npz data
+                    
                     episode_data = self.npz_reader.load_episode_data(ep_idx)
 
                     n_steps = len(episode_data["image"])
                     logger.info(f"  Images: {n_steps} frames")
 
-                    # Create episode directory (use global episode index)
+                    
                     episode_dir = os.path.join(self.output_dir, f"episode{global_episode_idx:07d}")
                     os.makedirs(episode_dir, exist_ok=True)
 
-                    # Save text embedding (once per episode)
+                    
                     text_embed_path = os.path.join(episode_dir, "text_clip.npy")
                     np.save(text_embed_path, self.text_embed)
 
-                    # Process each frame
+                    
                     for step_idx in range(n_steps):
-                        # Extract state from robot_pose: [x, y, z, roll, pitch, yaw]
+                        
                         pose = episode_data["robot_pose"][step_idx]
                         x, y, z = pose[0], pose[1], pose[2]
                         grip = int(episode_data["gripper_state"][step_idx])
                         state = [float(x), float(y), float(z), float(grip)]
 
-                        # Extract force
+                        
                         force = episode_data["force_torque"][step_idx].tolist()
 
-                        # Update force stats
+                        
                         self._update_force_stats(force)
 
-                        # Get image
+                        
                         frame_img = episode_data["image"][step_idx]
 
-                        # Encode image
+                        
                         latent = self._encode_image(frame_img)
 
-                        # Save latent
+                        
                         latent_path = os.path.join(episode_dir, f"color_wrist_1_{step_idx:04d}.npy")
                         np.save(latent_path, latent)
 
-                        # Add to dataset info
+                        
                         all_dataset_info.append({
                             "episode": global_episode_idx,
                             "frame": step_idx,
@@ -273,14 +273,14 @@ class NPZDataConverter:
                     logger.info(f"  Saved {n_steps} frames for episode {episode_id}")
                     global_episode_idx += 1
 
-        # Save dataset info
+        
         json_path = os.path.join(self.output_dir, "dataset_rgb_s_d.json")
         with open(json_path, "w") as f:
             json.dump(all_dataset_info, f, indent=2, ensure_ascii=False)
         logger.info(f"Saved dataset info to {json_path}")
         logger.info(f"Total samples: {len(all_dataset_info)}")
 
-        # Save force stats
+        
         if self.force_stats["count"] > 0:
             denom = max(self.force_stats["count"] - 1, 1)
             var = self.force_stats["m2"] / denom
@@ -299,25 +299,25 @@ class NPZDataConverter:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert npz format robot data to training format")
 
-    # Input/Output
+    
     parser.add_argument("--input", type=str, default="/mnt/sda/datasets/real_data",
                         help="Input directory (single task) or parent directory (multi-task)")
     parser.add_argument("--output", type=str, default="/mnt/sda/datasets/real_data_converted",
                         help="Output directory for converted data")
 
-    # Model paths
+    
     parser.add_argument("--vae-path", type=str, default="/home/syr/code/models/sd-vae-ft-mse",
                         help="Path to VAE model")
     parser.add_argument("--clip-path", type=str, default="/home/syr/code/models/clip-vit-base-patch32",
                         help="Path to CLIP model")
 
-    # Task description
+    
     parser.add_argument("--multi-task", action="store_true",
                         help="Enable multi-task mode: scan subdirectories and use folder names as instructions")
     parser.add_argument("--instruction", type=str, default="",
                         help="Task instruction for text embedding (single-task mode only)")
 
-    # Processing parameters
+    
     parser.add_argument("--image-size", type=int, default=256,
                         help="Image size after center crop")
     parser.add_argument("--gpu", type=int, default=0,
@@ -325,7 +325,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Run conversion
+    
     converter = NPZDataConverter(args)
     converter.convert()
 

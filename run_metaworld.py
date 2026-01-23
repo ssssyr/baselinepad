@@ -25,12 +25,12 @@ import torch
 from tqdm import tqdm
 from scipy.spatial.transform import Rotation
 
-# Must be set BEFORE importing metaworld/mujoco backends
+
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 from metaworld.envs import (
     ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE,
-    ALL_V2_ENVIRONMENTS_GOAL_HIDDEN,  # kept for compatibility (not used here)
+    ALL_V2_ENVIRONMENTS_GOAL_HIDDEN,  
 )
 
 from evaluation.agent import DiffusionAgent
@@ -58,16 +58,16 @@ def add_bound(rgb, color="red"):
     c = 0 if color == "red" else 1
 
     rgb = rgb.copy()
-    # top
+    
     rgb[:width, :, 1:3] = 100
     rgb[:width, :, c] = 255
-    # bottom
+    
     rgb[-width:, :, 1:3] = 100
     rgb[-width:, :, c] = 255
-    # left
+    
     rgb[:, :width, 1:3] = 100
     rgb[:, :width, c] = 255
-    # right
+    
     rgb[:, -width:, 1:3] = 100
     rgb[:, -width:, c] = 255
     return rgb
@@ -108,7 +108,7 @@ def get_ee_force_torque(env):
         torque_world = env.sim.data.sensordata[torque_adr : torque_adr + 3].copy()
 
         body_id = env.model.body_name2id("hand")
-        quat = env.sim.data.body_xquat[body_id].copy()  # mujoco: w,x,y,z
+        quat = env.sim.data.body_xquat[body_id].copy()  
 
         rotation = Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]])
         R_world_to_ee = rotation.as_matrix().T
@@ -136,7 +136,7 @@ def motion_planner(
     A simple motion planner to reach the target pose from current pose.
 
     Returns:
-        info (dict), img (np.ndarray)  # img is last rendered frame
+        info (dict), img (np.ndarray)  
     """
     stage = 0
     grasp_moment = False
@@ -144,7 +144,7 @@ def motion_planner(
     success_flag = False
     img = None
 
-    # Determine whether to run grasp stage
+    
     if np.abs(float(target_gripper) - float(curr_gripper)) > 0.2:
         grasp_moment = True
         print("prepare grasp!!")
@@ -155,14 +155,14 @@ def motion_planner(
         a = -np.ones(4, dtype=np.float32)
 
         if stage == 0:
-            # gripper control
+            
             if target_gripper < 0.75 and curr_gripper < 0.75:
                 a[3] = 0.7
 
             delta = (target_xyz - curr_xyz).astype(np.float32)
             dist = float(np.linalg.norm(delta))
 
-            # Safe normalization
+            
             if dist < 1e-8:
                 a[:3] = 0.0
             else:
@@ -189,12 +189,12 @@ def motion_planner(
                 success_flag = True
                 break
 
-            # Target reached -> next stage or exit
+            
             if float(np.linalg.norm(target_xyz - curr_xyz)) < 0.005:
                 stage += 1 if grasp_moment else motion_steps
 
         elif stage < 20:
-            # grasping stage
+            
             if target_gripper < 0.82:
                 a = np.array([0, 0, 0, 0.7], dtype=np.float32)
                 obs, r, done, info = env.step(a)
@@ -267,20 +267,20 @@ def run_single_rollout(agent, task, selected_id, traj_idx, META_CONFIG, INSTRUCT
     success = False
 
     try:
-        # Use random_seed from config if available, otherwise use time-based seed
+        
         base_seed = META_CONFIG.get("random_seed", None)
         if base_seed is not None:
-            # Combine base_seed with selected_id and traj_idx for reproducible per-rollout seeds
+            
             seed = base_seed + selected_id * 1000 + traj_idx
         else:
-            seed = None  # Use time-based random seed
+            seed = None  
         set_random_seed(seed)
 
         env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[task + "-goal-observable"]
-        # Use traj_idx for env seed to ensure consistent initialization across batch/standalone runs
+        
         env = env_cls(seed=traj_idx + 100)
 
-        # Keep your original assembly handling
+        
         if task.startswith("assembly"):
             env.random_init = False
 
@@ -312,14 +312,14 @@ def run_single_rollout(agent, task, selected_id, traj_idx, META_CONFIG, INSTRUCT
                     predict_img = agent.decode_rgb(img, samples)
                 predict_img = add_bound(predict_img)
 
-            # Select target action (use 2nd frame of predicted sequence)
+            
             if getattr(agent.args, "action_steps", 0) > 0 and sample_a is not None:
                 a_seq = sample_a.reshape(agent.args.action_steps, agent.args.action_dim)
                 if save_video:
                     print(f"🧭 Full predicted action seq (xyzg per step):\n{np.array2string(a_seq, precision=3, floatmode='fixed')}")
                     print(f"🧭 Gripper seq: {np.array2string(a_seq[:,3], precision=3, floatmode='fixed')}, current gripper: {curr_gripper:.3f}")
 
-                target = a_seq[0] / agent.args.action_scale  # Use 2nd frame (index 1)
+                target = a_seq[0] / agent.args.action_scale  
                 target_xyz, target_gripper = target[:3], float(target[3])
             else:
                 target = sample_a / agent.args.action_scale
@@ -341,21 +341,21 @@ def run_single_rollout(agent, task, selected_id, traj_idx, META_CONFIG, INSTRUCT
                 save_video=save_video,
             )
 
-            # Early stop on success (your requirement)
+            
             if info.get("success", 0):
                 success = True
                 if save_video:
                     print(task, traj_idx, "success (early stop)")
                 break
 
-        # ALWAYS save video if requested (success or failure)
+        
         if save_video:
             _save_video_if_needed(task, traj_idx, frames, META_CONFIG)
 
         return success
 
     finally:
-        # Critical cleanup for batch stability
+        
         if env is not None:
             try:
                 env.close()
@@ -382,11 +382,11 @@ def build_agent_from_meta(META_CONFIG):
 
 
 def main():
-    # Do not modify task definitions: read from run_cfg as requested.
+    
     task_list = META_CONFIG.get("task_list", list(INSTRUCTIONS.keys()))
     rollout_num = int(META_CONFIG.get("rollout_num", 1))
 
-    # Standalone should save videos
+    
     save_video = True
 
     agent = build_agent_from_meta(META_CONFIG)

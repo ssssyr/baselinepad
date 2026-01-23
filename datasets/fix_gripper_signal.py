@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Fix gripper signal in npz files.
 
@@ -31,26 +31,26 @@ def fix_task_gripper(task_dir: str, gripper_value: int, dry_run: bool = False):
     for npz_file in npz_files:
         npz_path = os.path.join(task_dir, npz_file)
 
-        # Load npz file
+        
         data = np.load(npz_path, allow_pickle=True)
-        action = data['action']  # (n_steps, 7)
+        action = data['action']  
 
-        # Check current gripper values
+        
         unique_gripper = np.unique(action[:, -1])
         original_values = action[:, -1].copy()
 
-        # Modify gripper signal (last column)
+        
         action[:, -1] = gripper_value
 
-        # Calculate changes
+        
         n_changed = np.sum(original_values != gripper_value)
         if n_changed > 0:
             print(f"  {npz_file}: {n_changed}/{len(action)} frames changed")
             print(f"    Original gripper values: {unique_gripper}")
 
             if not dry_run:
-                # Save modified data
-                # npz files are compressed, need to save all arrays
+                
+                
                 arrays = {key: data[key] for key in data.files}
                 arrays['action'] = action
                 np.savez_compressed(npz_path, **arrays)
@@ -67,10 +67,10 @@ def main():
 
     args = parser.parse_args()
 
-    # Define tasks and their gripper values
+    
     tasks = [
-        ("Fill a cup one-third full with cola.", 1),   # gripper = 1
-        ("Close drawer-type parts box", 0),             # gripper = 0
+        ("Fill a cup one-third full with cola.", 1),   
+        ("Close drawer-type parts box", 0),             
     ]
 
     print("=" * 60)

@@ -13,7 +13,7 @@ def show_stat(name, arr):
 
 def main():
     feature_dir = "/mnt/sda/datasets/metaworldcorner3-features_button_press_v2"
-    skip_step = 4   # keep consistent with training config
+    skip_step = 4   
 
     with open(os.path.join(feature_dir, "dataset_rgb_s_d.json"), "r") as f:
         steps = json.load(f)
@@ -48,7 +48,7 @@ def main():
         f"min {grips_arr.min():.4f}, max {grips_arr.max():.4f}"
     )
 
-    # Top-10 largest jumps
+    
     print("\nTop 10 largest pose jumps (by norm) across skip_step:")
     for k, (norm, ep, i, j, d) in enumerate(sorted(jump_records, reverse=True)[:10], 1):
         print(f"Top{k}: |delta|={norm:.4f}, ep={ep}, frame {i}->{j}, delta={d}")

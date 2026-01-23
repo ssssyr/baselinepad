@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+
 """
 Meta-World v2 数据采集脚本（50个任务：corner3相机视角 + 力信号）
 - 采集所有 50 个 Meta-World v2 任务
@@ -6,8 +6,8 @@ Meta-World v2 数据采集脚本（50个任务：corner3相机视角 + 力信号
 - 每条轨迹的 JSON 条目仅包含：
    {
      "instruction": <str>,
-     "features": [[x,y,z,grip], ...],          # 世界坐标（4维）
-     "force_features": [[fx,fy,fz,tx,ty,tz], ...],  # EE坐标系六维力（6维）
+     "features": [[x,y,z,grip], ...],          
+     "force_features": [[fx,fy,fz,tx,ty,tz], ...],  
      "success": 0/1
    }
 """
@@ -23,10 +23,10 @@ from tqdm import tqdm
 from scipy.spatial.transform import Rotation
 from scipy.signal import savgol_filter
 
-# 让 mujoco-py 离屏渲染
+
 os.environ.setdefault("MUJOCO_GL", "egl")
 
-# Meta-World v2 环境与策略
+
 from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
 from metaworld.policies import (
     SawyerAssemblyV2Policy,
@@ -81,9 +81,9 @@ from metaworld.policies import (
     SawyerWindowOpenV2Policy,
 )
 
-# ---------------- 配 置 ---------------- #
 
-# Meta-World v2 采集任务：包含所有50个任务（带力信号）
+
+
 TASKS_TO_COLLECT: Dict[str, str] = {
     "assembly-v2": "assemble the peg",
     "button-press-v2": "press the button",
@@ -137,22 +137,22 @@ TASKS_TO_COLLECT: Dict[str, str] = {
     "window-open-v2": "open the window",
 }
 
-NUM_TRAJECTORIES_PER_TASK = 50          # 每任务采集轨迹数
-KEEP_ONLY_SUCCESS = False               # 仅保留成功轨迹（会重采直到够数）
-CAMERA_NAME = "corner3"                 # ['corner','corner2','corner3','corner4','topview','behindGripper','gripperPOV']
-IMAGE_RESOLUTION = (256, 256)           # (H, W)
-OUTPUT_DIR = Path("/mnt/sda/datasets/metaworldconer3forcenew")  # 输出根目录（所有50个任务，带力信号）
+NUM_TRAJECTORIES_PER_TASK = 50          
+KEEP_ONLY_SUCCESS = False               
+CAMERA_NAME = "corner3"                 
+IMAGE_RESOLUTION = (256, 256)           
+OUTPUT_DIR = Path("/mnt/sda/datasets/metaworldconer3forcenew")  
 
-# ==================== 力信号滤波器配置 ====================
-# 力信号滤波参数，用于平滑 MetaWorld 仿真中的接触力峰值
-FORCE_FILTER_WINDOW_SIZE = 5          # SG 滤波窗口大小（奇数，>= polyorder+1）
-FORCE_FILTER_POLYORDER = 2             # SG 滤波多项式阶数
-FORCE_FILTER_CLIP_FORCE = 20.0         # 力截断阈值 (牛顿)，超过此值的信号将被截断
-FORCE_FILTER_CLIP_TORQUE = 2.0         # 力矩截断阈值 (牛·米)
-# 说明：MetaWorld 轻物任务的正常接触力通常在 ±5N 范围内，
-#       但仿真中的碰撞会产生 100N+ 的异常峰值，需要滤波处理
 
-# 任务名 -> 专家策略（包含所有50个任务）
+
+FORCE_FILTER_WINDOW_SIZE = 5          
+FORCE_FILTER_POLYORDER = 2             
+FORCE_FILTER_CLIP_FORCE = 20.0         
+FORCE_FILTER_CLIP_TORQUE = 2.0         
+
+
+
+
 POLICY_MAPPING = {
     "assembly-v2": SawyerAssemblyV2Policy,
     "button-press-v2": SawyerButtonPressV2Policy,
@@ -205,12 +205,12 @@ POLICY_MAPPING = {
     "window-close-v2": SawyerWindowCloseV2Policy,
     "window-open-v2": SawyerWindowOpenV2Policy,
 }
-# ------------------------------------- #
+
 
 def render_rgb(env, h: int, w: int, camera: str) -> np.ndarray:
     """离屏渲染一帧 RGB（HxWx3, uint8）"""
     frame = env.sim.render(width=w, height=h, camera_name=camera)
-    return frame  # 如遇画面倒置，可改：return frame[::-1]
+    return frame  
 
 def get_ee_force_torque(env) -> np.ndarray:
     """
@@ -222,35 +222,35 @@ def get_ee_force_torque(env) -> np.ndarray:
     Returns:
         np.ndarray: 6维数组 [fx, fy, fz, tx, ty, tz]，EE坐标系
     """
-    # 获取传感器数据索引和维度
+    
     force_idx = env.model.sensor_name2id("ee_force")
     torque_idx = env.model.sensor_name2id("ee_torque")
 
-    # 获取传感器的数据维度（force和torque都是3维）
-    force_adr = env.model.sensor_adr[force_idx]  # 传感器在sensordata中的起始位置
+    
+    force_adr = env.model.sensor_adr[force_idx]  
     torque_adr = env.model.sensor_adr[torque_idx]
 
-    # 获取世界坐标系下的力和力矩（MuJoCo传感器默认输出世界坐标系）
-    force_world = env.sim.data.sensordata[force_adr:force_adr+3].copy()  # [fx, fy, fz]
-    torque_world = env.sim.data.sensordata[torque_adr:torque_adr+3].copy()  # [tx, ty, tz]
+    
+    force_world = env.sim.data.sensordata[force_adr:force_adr+3].copy()  
+    torque_world = env.sim.data.sensordata[torque_adr:torque_adr+3].copy()  
 
-    # 获取EE（hand body）的姿态四元数 [w, x, y, z]
+    
     body_id = env.model.body_name2id("hand")
-    quat = env.sim.data.body_xquat[body_id].copy()  # [w, x, y, z]
+    quat = env.sim.data.body_xquat[body_id].copy()  
 
-    # 将四元数转换为旋转矩阵
-    # 注意：MuJoCo四元数格式是 [w, x, y, z]，scipy需要 [x, y, z, w]
+    
+    
     rotation = Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]])
-    R_world_to_ee = rotation.as_matrix().T  # 转置得到世界到EE的变换
+    R_world_to_ee = rotation.as_matrix().T  
 
-    # 转换到EE坐标系
+    
     force_ee = R_world_to_ee @ force_world
     torque_ee = R_world_to_ee @ torque_world
 
-    return np.concatenate([force_ee, torque_ee])  # [fx, fy, fz, tx, ty, tz]
+    return np.concatenate([force_ee, torque_ee])  
 
 
-# ==================== 力信号滤波器 ====================
+
 
 class ForceFilter:
     """
@@ -264,8 +264,8 @@ class ForceFilter:
         self,
         window_size: int = 5,
         polyorder: int = 2,
-        clip_force: float = 20.0,     # 力截断阈值 (牛顿)
-        clip_torque: float = 2.0      # 力矩截断阈值 (牛·米)
+        clip_force: float = 20.0,     
+        clip_torque: float = 2.0      
     ):
         """
         Args:
@@ -278,7 +278,7 @@ class ForceFilter:
         self.polyorder = polyorder
         self.clip_force = clip_force
         self.clip_torque = clip_torque
-        self.history = []  # 存储历史力信号
+        self.history = []  
 
     def filter(self, force: np.ndarray) -> np.ndarray:
         """
@@ -292,24 +292,24 @@ class ForceFilter:
         """
         force = np.array(force, dtype=np.float32)
 
-        # 1. 先截断极端值（防止 SG 滤波器被异常值污染）
-        force[:3] = np.clip(force[:3], -self.clip_force, self.clip_force)  # fx, fy, fz
-        force[3:] = np.clip(force[3:], -self.clip_torque, self.clip_torque)  # tx, ty, tz
+        
+        force[:3] = np.clip(force[:3], -self.clip_force, self.clip_force)  
+        force[3:] = np.clip(force[3:], -self.clip_torque, self.clip_torque)  
 
-        # 2. 添加到历史
+        
         self.history.append(force.copy())
 
-        # 3. 使用 Savitzky-Golay 滤波器平滑（需要足够的窗口数据）
+        
         if len(self.history) >= self.window_size:
             recent = np.array(self.history[-self.window_size:])
             for i in range(6):
-                # 对每个维度分别应用 SG 滤波
+                
                 filtered = savgol_filter(
                     recent[:, i],
                     self.window_size,
                     self.polyorder
                 )
-                # 只更新最新值，保持历史一致性
+                
                 self.history[-1][i] = filtered[-1]
 
         return self.history[-1]
@@ -346,7 +346,7 @@ def collect_one_trajectory(
     H, W = image_resolution
     max_len = int(getattr(env, "max_path_length", 500))
 
-    # 创建力信号滤波器（如果未提供）
+    
     if force_filter is None:
         force_filter = ForceFilter(window_size=5, polyorder=2, clip_force=20.0, clip_torque=2.0)
     else:
@@ -356,18 +356,18 @@ def collect_one_trajectory(
     forces: List[List[float]] = []
     info_last = {}
     for step_idx in range(max_len):
-        # 图像
+        
         img = render_rgb(env, H, W, camera_name)
         Image.fromarray(img).save(traj_dir / f"frame_{step_idx:04d}.png")
-        # 绝对状态（世界系）
-        states.append((obs[:4]).tolist())  # [x, y, z, grip]
+        
+        states.append((obs[:4]).tolist())  
 
-        # 获取EE坐标系下的六维力，经过滤波
-        raw_force = get_ee_force_torque(env)  # [fx, fy, fz, tx, ty, tz]
-        filtered_force = force_filter.filter(raw_force)  # 滤波处理
+        
+        raw_force = get_ee_force_torque(env)  
+        filtered_force = force_filter.filter(raw_force)  
         forces.append(filtered_force.tolist())
 
-        # 与环境交互：使用专家策略动作（不保存动作）
+        
         action = policy.get_action(obs)
         obs, _, done, info = env.step(np.asarray(action, dtype=np.float32))
         info_last = info
@@ -389,12 +389,12 @@ def main():
         print(f"\n[{task_idx+1}/{len(TASKS_TO_COLLECT)}] 开始处理任务: {task_name}")
         env_key = task_name + "-goal-observable"
 
-        # 检查策略映射
+        
         if task_name not in POLICY_MAPPING:
             print(f"⚠️ 跳过 {task_name}: 未找到专家策略")
             continue
 
-        # 检查环境类
+        
         if env_key not in ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE:
             print(f"⚠️ 跳过 {task_name}: 环境类 {env_key} 不存在")
             continue
@@ -408,7 +408,7 @@ def main():
         task_dir = OUTPUT_DIR / task_name
         task_dir.mkdir(parents=True, exist_ok=True)
 
-        # 创建力信号滤波器
+        
         force_filter = ForceFilter(
             window_size=FORCE_FILTER_WINDOW_SIZE,
             polyorder=FORCE_FILTER_POLYORDER,
@@ -433,13 +433,13 @@ def main():
 
                 traj_entry = {
                     "instruction": instruction,
-                    "features": states,      # [[x,y,z,grip], ...] 世界坐标（4维）
-                    "force_features": forces,  # [[fx,fy,fz,tx,ty,tz], ...] EE坐标系（6维）
+                    "features": states,      
+                    "force_features": forces,  
                     "success": int(success)
                 }
 
                 if KEEP_ONLY_SUCCESS and not success:
-                    # 不保留失败轨迹：清理刚才写的图片目录
+                    
                     traj_dir = task_dir / f"class_{attempt:06d}"
                     for png in traj_dir.glob("*.png"):
                         try:

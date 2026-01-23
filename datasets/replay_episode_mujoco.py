@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """Replay a recorded MetaWorld episode in MuJoCo using stored poses.
 
 Loads `dataset_rgb_s_d.json`, pulls the pose targets from one episode, and
@@ -14,9 +14,9 @@ from typing import List, Optional, Tuple
 import mediapy
 import numpy as np
 
-# Headless rendering support
+
 os.environ.setdefault("MUJOCO_GL", "egl")
-from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE  # noqa: E402
+from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE  
 
 
 def load_episode_steps(
@@ -73,7 +73,7 @@ def move_to_pose(
             if dist > 1e-6:
                 velocity = 0.6 if dist > 0.03 else 0.3
                 action[:3] = np.clip(delta / (dist + 1e-9) * velocity, -1.0, 1.0)
-            # Gripper: for button press, keep完全打开（-1）; 若需要闭合再执行正向指令
+            
             if target_gripper >= gripper_open_thresh:
                 action[3] = -1.0
             else:

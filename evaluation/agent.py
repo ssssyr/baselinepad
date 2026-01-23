@@ -32,12 +32,12 @@ def load_force_stats(args):
 
 class DiffusionAgent():
     def __init__(self, ckpt_path, vae_path="/cephfs/shared/llm/sd-vae-ft-mse", clip_path="/cephfs/shared/llm/clip-vit-base-patch32",denoise_steps=200, device_id=0):
-        # 安全加载模型，添加argparse.Namespace到安全全局列表
+        
         torch.serialization.add_safe_globals([argparse.Namespace])
 
-        # 添加模型加载调试信息
+        
         print(f"🔄 Loading model from: {ckpt_path}")
-        file_size = os.path.getsize(ckpt_path) / (1024*1024*1024)  # GB
+        file_size = os.path.getsize(ckpt_path) / (1024*1024*1024)  
         print(f"📁 Model file size: {file_size:.2f} GB")
 
         try:
@@ -46,7 +46,7 @@ class DiffusionAgent():
             print(f"Failed to load with weights_only=True, falling back to weights_only=False: {e}")
             checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
 
-        # 打印模型信息
+        
         print(f"📋 Model keys: {list(checkpoint.keys())}")
         if "args" in checkpoint:
             args = checkpoint["args"]
@@ -58,7 +58,7 @@ class DiffusionAgent():
             print(f"📈 Action scale: {getattr(args, 'action_scale', 'unknown')}")
         else:
             print("⚠️  No 'args' key found in checkpoint!")
-            args = argparse.Namespace()  # 创建默认args
+            args = argparse.Namespace()  
 
         self.args = args
 
@@ -77,8 +77,8 @@ class DiffusionAgent():
             self.args.force_mean = None
         if not hasattr(self.args, "force_std"):
             self.args.force_std = None
-        # if not hasattr(self.args, "action_condition"):
-        #     self.args.action_condition = False
+        
+        
         if torch.cuda.is_available():
             self.device = torch.device(f"cuda:{device_id}")
         else:
@@ -94,8 +94,8 @@ class DiffusionAgent():
         state_dict = checkpoint["model"]
         model_dict = self.model.state_dict()
 
-        # Map shared_experts weights if checkpoint used MoeMLP naming (gate_proj/up_proj/down_proj)
-        # but current model expects dense naming (fc1/fc2).
+        
+        
         mapped = {}
         for k, v in state_dict.items():
             mapped[k] = v
@@ -107,7 +107,7 @@ class DiffusionAgent():
                 base = k.replace("down_proj.weight", "")
                 fc2_key = base + "fc2.weight"
                 mapped[fc2_key] = v
-        # strip possible DistributedDataParallel prefix
+        
         cleaned = {}
         for k, v in mapped.items():
             if k.startswith("module."):
@@ -115,7 +115,7 @@ class DiffusionAgent():
             cleaned[k] = v
         state_dict = cleaned
 
-        # If checkpoint lacks shared_experts biases (older runs), fill zeros so load_state_dict stays strict.
+        
         for bias_key in ["shared_experts.fc1.bias", "shared_experts.fc2.bias"]:
             full_keys = [k for k in model_dict.keys() if bias_key in k]
             for k in full_keys:
@@ -123,7 +123,7 @@ class DiffusionAgent():
                     state_dict[k] = torch.zeros_like(model_dict[k])
 
 
-        # Debug overlap stats before we drop any keys
+        
         missing_keys = [k for k in model_dict.keys() if k not in state_dict]
         unexpected_keys = [k for k in state_dict.keys() if k not in model_dict]
         intersection = {k: v for k, v in state_dict.items() if k in model_dict}
@@ -134,15 +134,15 @@ class DiffusionAgent():
             print(f"⚠️ Unexpected keys (first 10): {unexpected_keys[:10]}")
         state_dict = intersection
 
-        # 计算模型参数的哈希值用于比较
+        
         param_hash = 0
         for key, tensor in sorted(state_dict.items()):
-            # 使用tensor的数据计算哈希
-            param_hash += hash((key, tuple(tensor.flatten()[:10].tolist())))  # 只取前10个元素避免内存问题
+            
+            param_hash += hash((key, tuple(tensor.flatten()[:10].tolist())))  
         print(f"🔑 Model parameter hash (first 10 values per layer): {param_hash}")
         print(f"📊 Total loaded parameters: {len(state_dict)}")
 
-        # 检查第一层的几个参数作为额外验证
+        
         if state_dict:
             first_key = list(state_dict.keys())[0]
             first_tensor = state_dict[first_key]
@@ -156,9 +156,9 @@ class DiffusionAgent():
 
         self.force_mean, self.force_std = load_force_stats(self.args)
 
-        # 验证加载后的模型参数
+        
         with torch.no_grad():
-            # 获取第一个参数作为指纹
+            
             first_param = next(self.model.parameters())
             print(f"✅ Loaded model fingerprint (first 5 values): {first_param.flatten()[:5].tolist()}")
 
@@ -182,7 +182,7 @@ class DiffusionAgent():
         image = np.array(image)
         image = cv2.resize(image, (256,256), interpolation=cv2.INTER_AREA)
         image = torch.tensor(image).float().to(self.device).permute(2,0,1).unsqueeze(0)
-        # print("image shape:", image.shape)
+        
         image = torch.clamp((image-128.0)/127.5, -1, 1).to(self.device)
         with torch.no_grad():
             latent = self.vae.encode(image).latent_dist.sample().mul_(0.18215)
@@ -219,7 +219,7 @@ class DiffusionAgent():
         z = torch.randn(1, self.model.in_channels*t, latent_size, latent_size).to(self.device)
         print(f"🎲 Initial noise z mean: {z.mean():.6f}, std: {z.std():.6f}")
 
-        # if self.args has arribute action_condition and self.args.action_condition:
+        
         if hasattr(self.args, "action_condition") and self.args.action_condition:
             action_cond = torch.tensor(state*self.args.action_scale).float().to(self.device).unsqueeze(0).unsqueeze(0)
         else:
@@ -269,7 +269,7 @@ class DiffusionAgent():
                 if sample_depth is not None:
                     sample_depth = sample_depth.detach().cpu().numpy()
 
-        # 添加结果调试信息
+        
         if samples_a is not None:
             print(f"🎯 Action prediction shape: {samples_a.shape}")
             print(f"🎯 Action prediction sample values: {samples_a[0, 0, :5]}")
@@ -285,17 +285,17 @@ class DiffusionAgent():
         t = self.args.predict_horizon
         x_pred = x_pred.view(B*t,int(C/t),H,W)
         rec_pred = self.vae.decode(x_pred / 0.18215).sample
-        rec_pred = torch.clamp(127.5 * rec_pred + 128.0, 0, 255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy() # 3, 256,256,3
+        rec_pred = torch.clamp(127.5 * rec_pred + 128.0, 0, 255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy() 
         img = np.concatenate([x, rec_pred[0], rec_pred[1], rec_pred[2]], axis=1)
         if not save:
             return img
-        # save img
+        
         import time
         uuid = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
         img = Image.fromarray(img).save(f"output/predict_{prefix}_{uuid}.jpg")
     
     def decode_depth(self, depth, depth_pred, prefix="",save=False):
-        # depth = cv2.resize(depth, (32,32), interpolation=cv2.INTER_NEAREST)
+        
         depth_cond = self.filter(depth) if not self.args.depth_filter else self.filter2(depth)
         B,C,H,W = depth_pred.shape
         t = self.args.predict_horizon
@@ -305,11 +305,11 @@ class DiffusionAgent():
         depth_img = np.concatenate([depth_cond, depth_pred[0][0], depth_pred[1][0], depth_pred[2][0]], axis=1)
         if not save:
             return depth_img
-        # save img
+        
         import time
         uuid = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
         plt.imsave(f"output/predict_{prefix}_{uuid}_depth.png", depth_img)
-        # Image.fromarray(depth_img).save(f"diffusion_deploy/predict_{prefix}_{uuid}_depth2.png")
+        
 
     def decode_rgb(self, x, x_pred, prefix=""):
         x = cv2.resize(x, (256,256), interpolation=cv2.INTER_AREA)
@@ -317,18 +317,18 @@ class DiffusionAgent():
         t = self.args.predict_horizon
         x_pred = x_pred.view(B*t,int(C/t),H,W)
         rec_pred = self.vae.decode(x_pred / 0.18215).sample
-        rec_pred = torch.clamp(127.5 * rec_pred + 128.0, 0, 255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy() # 3, 256,256,3
-        # Return only the first predicted frame
+        rec_pred = torch.clamp(127.5 * rec_pred + 128.0, 0, 255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy() 
+        
         return rec_pred[0]
 
 
 
 
 if __name__ == "__main__":
-    # depth image
+    
     agent = DiffusionAgent(ckpt_path="/cephfs/cjyyj/dit_ckpt/063-DiT-XL-2-2024-04-26-21-58-30/checkpoints/0120000.pt")
 
-    # load image at "/cephfs/shared/panda_real_data_processed/2024-04-26-pick_random/episode0000009/color_wrist_1_0000.jpg"
+    
     rgb = Image.open("/cephfs/shared/panda_real_data_processed/2024-04-26-pick_random/episode0000409/color_wrist_1_0000.jpg").convert("RGB")
     rgb = np.array(rgb)
     

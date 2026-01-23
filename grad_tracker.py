@@ -42,7 +42,7 @@ class ExpertGradTracker:
         if self._initialized:
             return
 
-        # 存储结构: {layer_idx: {expert_idx: {'rgb': float, 'action': float, 'total': float}}}
+        
         self._grad_data: Dict[int, Dict[int, Dict[str, float]]] = {}
         self._enabled = False
         self._modality_names = {0: "rgb", 1: "action", 2: "depth", 3: "force"}
@@ -51,7 +51,7 @@ class ExpertGradTracker:
     def enable(self):
         """启用梯度追踪"""
         self._enabled = True
-        self._grad_data.clear()  # 清空之前的数据
+        self._grad_data.clear()  
 
     def disable(self):
         """禁用梯度追踪"""
@@ -68,15 +68,15 @@ class ExpertGradTracker:
         Args:
             layer_idx: MoE层的索引
             routing_info: {
-                'modality_ids': Tensor[N],       # 每个token的模态ID
-                'topk_idx': Tensor[N, top_k],     # 每个token选择的专家索引
-                'topk_weight': Tensor[N, top_k],  # 对应的gate权重
+                'modality_ids': Tensor[N],       
+                'topk_idx': Tensor[N, top_k],     
+                'topk_weight': Tensor[N, top_k],  
             }
         """
         if not self._enabled:
             return
 
-        # 存储路由信息供backward hook使用（detach避免内存泄漏）
+        
         self._routing_info = {
             'modality_ids': routing_info['modality_ids'].detach().clone() if routing_info['modality_ids'] is not None else None,
             'topk_idx': routing_info['topk_idx'].detach().clone(),
@@ -106,58 +106,58 @@ class ExpertGradTracker:
         if info is None or info['modality_ids'] is None:
             return
 
-        modality_ids = info['modality_ids']          # [N]
-        topk_idx = info['topk_idx']                  # [N, top_k]
-        topk_weight = info['topk_weight']            # [N, top_k]
+        modality_ids = info['modality_ids']          
+        topk_idx = info['topk_idx']                  
+        topk_weight = info['topk_weight']            
 
-        # grad_output形状: [N, hidden_dim] (经过repeat_interleave后)
-        # 需要还原到原始token顺序
+        
+        
         n_original = modality_ids.shape[0]
         top_k = topk_idx.shape[1]
         hidden_dim = grad_output.shape[-1]
 
-        # grad是repeat_interleave后的，需要分组
-        # 原始每个token对应top_k个expert，现在被展平了
-        grad = grad_output.view(n_original, top_k, hidden_dim)  # [N, top_k, D]
+        
+        
+        grad = grad_output.view(n_original, top_k, hidden_dim)  
 
-        # 初始化该专家的梯度记录
+        
         if layer_idx not in self._grad_data:
             self._grad_data[layer_idx] = {}
         if expert_idx not in self._grad_data[layer_idx]:
             self._grad_data[layer_idx][expert_idx] = {'rgb': 0.0, 'action': 0.0, 'total': 0.0}
 
-        # 对每个模态分别计算梯度贡献
+        
         for mod_id, mod_name in [(0, 'rgb'), (1, 'action'), (2, 'depth'), (3, 'force')]:
-            # 找出该模态的token
+            
             mod_mask = (modality_ids == mod_id)
             if not mod_mask.any():
                 continue
 
-            # 找出这些token是否选择了当前专家（在任一rank中）
-            mod_topk_idx = topk_idx[mod_mask]       # [num_mod_tokens, top_k]
-            mod_topk_weight = topk_weight[mod_mask] # [num_mod_tokens, top_k]
-            mod_grad = grad[mod_mask]               # [num_mod_tokens, top_k, D]
+            
+            mod_topk_idx = topk_idx[mod_mask]       
+            mod_topk_weight = topk_weight[mod_mask] 
+            mod_grad = grad[mod_mask]               
 
-            # 检查每个rank中是否有token选择了当前专家
+            
             for rank in range(top_k):
-                # 该模态的token中，把当前专家排在第rank位的
+                
                 rank_mask = (mod_topk_idx[:, rank] == expert_idx)
                 if not rank_mask.any():
                     continue
 
-                # 获取这些token的梯度和权重
-                rank_grad = mod_grad[rank_mask, rank, :]  # [num_selected, D]
-                rank_weight = mod_topk_weight[rank_mask, rank]  # [num_selected]
+                
+                rank_grad = mod_grad[rank_mask, rank, :]  
+                rank_weight = mod_topk_weight[rank_mask, rank]  
 
-                # 加权梯度范数: ||grad * weight||
-                # weight是标量，grad是向量，element-wise乘法
-                weighted_grad = rank_grad * rank_weight.unsqueeze(-1)  # [num_selected, D]
-                grad_norm = torch.norm(weighted_grad).item()  # 标量
+                
+                
+                weighted_grad = rank_grad * rank_weight.unsqueeze(-1)  
+                grad_norm = torch.norm(weighted_grad).item()  
 
-                # 累加（取对数空间避免数值问题，或者直接累加）
+                
                 self._grad_data[layer_idx][expert_idx][mod_name] += grad_norm
 
-        # 计算总梯度（所有模态的总和）
+        
         total = sum(self._grad_data[layer_idx][expert_idx].values())
         self._grad_data[layer_idx][expert_idx]['total'] = total
 
@@ -180,7 +180,7 @@ class ExpertGradTracker:
                 for mod_name, value in grad_dict.items():
                     summary[f"grad_by_modality/{prefix}/{mod_name}"] = value
 
-                # 计算action占比
+                
                 total = grad_dict.get('total', 1e-8)
                 if total > 1e-8:
                     action_ratio = grad_dict.get('action', 0.0) / total
@@ -202,7 +202,7 @@ class ExpertGradTracker:
         aggregated = {}
         num_experts = 0
 
-        # 聚合所有层
+        
         for layer_idx, experts in self._grad_data.items():
             for expert_idx, grad_dict in experts.items():
                 if expert_idx not in aggregated:
@@ -211,7 +211,7 @@ class ExpertGradTracker:
                     aggregated[expert_idx][mod_name] += value
             num_experts = max(num_experts, max(experts.keys()) + 1 if experts else 0)
 
-        # 转换为返回格式
+        
         result = {}
         for expert_idx, grad_dict in aggregated.items():
             for mod_name, value in grad_dict.items():
@@ -226,7 +226,7 @@ class ExpertGradTracker:
             self._routing_info = None
 
 
-# 全局实例
+
 _tracker = ExpertGradTracker()
 
 
@@ -287,11 +287,11 @@ def create_expert_backward_hook(layer_idx: int, expert_idx: int):
         if not is_grad_tracking_enabled():
             return
 
-        # grad_output[0]是该专家输出的梯度
+        
         if grad_output[0] is not None:
             record_expert_gradient(layer_idx, expert_idx, grad_output[0])
 
-        # 不返回任何值 = 不修改梯度，只是观察
+        
         return
 
     return hook

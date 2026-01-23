@@ -1,8 +1,8 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
 
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
+
+
+
+
 
 """
 A minimal training script for DiT with horizon-aware weight adaptation.
@@ -27,7 +27,7 @@ from accelerate import Accelerator, DistributedDataParallelKwargs
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
-# Speedups for A100 etc.
+
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
@@ -36,17 +36,17 @@ from models import DiT_models
 from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
 
-# dataset
+
 from datasets.dataset import RobotDataset
 
 
-# Removed gradient tracking for simplified open-source version
+
 GRAD_TRACKER_AVAILABLE = False
 
 
-#################################################################################
-#                             Training Helper Functions                         #
-#################################################################################
+
+
+
 
 @torch.no_grad()
 def update_ema(ema_model, model, decay=0.9999):
@@ -77,9 +77,9 @@ def create_logger(logging_dir):
 
 
 
-#################################################################################
-#                         Horizon/Channel Adaptation Utils                      #
-#################################################################################
+
+
+
 
 def _num_frames_from_channels(cin: int, channels_per_frame: int = 4) -> int:
     """
@@ -99,8 +99,8 @@ def adapt_x_embedder_weight(state_dict, current_state_dict, verbose=True):
     if key not in state_dict or key not in current_state_dict:
         return
 
-    pre_w = state_dict[key]           # [hidden_size, Cin_pre, k, k]
-    cur_w = current_state_dict[key]   # [hidden_size, Cin_cur, k, k]
+    pre_w = state_dict[key]           
+    cur_w = current_state_dict[key]   
     if pre_w.shape == cur_w.shape:
         return
 
@@ -112,26 +112,26 @@ def adapt_x_embedder_weight(state_dict, current_state_dict, verbose=True):
 
     assert kh == 2 and kw == 2, "Expected patch_size=2 for latent DiT."
 
-    # channels_per_frame = 4 (SD VAE latent channels)
+    
     cpf = 4
     T_pre = _num_frames_from_channels(cin_pre, cpf)
     T_cur = _num_frames_from_channels(cin_cur, cpf)
 
-    # allocate
+    
     new_w = torch.zeros_like(cur_w)
 
-    # copy cond block (first 4 channels)
-    take = min(cpf, cin_pre)  # normally 4
+    
+    take = min(cpf, cin_pre)  
     new_w[:, :take, :, :] = pre_w[:, :take, :, :]
 
-    # copy each future frame by block, if cur needs more than pre, repeat last pre frame-block
+    
     for i in range(T_cur):
         src_i = min(i, T_pre - 1) if T_pre > 0 else 0
         cur_s = cpf + i * cpf
         cur_e = cur_s + cpf
         pre_s = cpf + src_i * cpf
         pre_e = pre_s + cpf
-        # guard bounds
+        
         pre_s = min(pre_s, cin_pre - cpf)
         pre_e = pre_s + cpf
         new_w[:, cur_s:cur_e, :, :] = pre_w[:, pre_s:pre_e, :, :]
@@ -152,8 +152,8 @@ def adapt_final_layer_linear(state_dict, current_state_dict, model, verbose=True
     if w_key not in state_dict or w_key not in current_state_dict:
         return
 
-    pre_w = state_dict[w_key]           # [rows_pre, hidden]
-    cur_w = current_state_dict[w_key]   # [rows_cur, hidden]
+    pre_w = state_dict[w_key]           
+    cur_w = current_state_dict[w_key]   
 
     if pre_w.shape == cur_w.shape:
         return
@@ -161,8 +161,8 @@ def adapt_final_layer_linear(state_dict, current_state_dict, model, verbose=True
     if verbose:
         print(f"Adapting {w_key}: {tuple(pre_w.shape)} -> {tuple(cur_w.shape)}")
 
-    # rows_per_frame = patch_size^2 * (2*in_channels)
-    # For SD latent: in_channels=4, patch_size=2 => 2*2* (2*4) = 32
+    
+    
     rows_per_frame = (model.patch_size ** 2) * (model.in_channels * 2)
     assert rows_per_frame > 0 and cur_w.shape[0] % rows_per_frame == 0, \
         f"rows_cur ({cur_w.shape[0]}) must be multiple of rows_per_frame ({rows_per_frame})"
@@ -173,14 +173,14 @@ def adapt_final_layer_linear(state_dict, current_state_dict, model, verbose=True
     T_cur = cur_w.shape[0] // rows_per_frame
 
     new_w = torch.zeros_like(cur_w)
-    # bias may or may not exist
+    
     has_bias = b_key in state_dict and b_key in current_state_dict
     if has_bias:
         pre_b = state_dict[b_key]
         cur_b = current_state_dict[b_key]
         new_b = torch.zeros_like(cur_b)
 
-    # frame-wise copy
+    
     for i in range(T_cur):
         src_i = min(i, T_pre - 1) if T_pre > 0 else 0
         cur_s = i * rows_per_frame
@@ -214,7 +214,7 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
         if shared is None:
             continue
         prefix = f"blocks.{idx}.mlp"
-        # skip if ckpt already has shared_experts (MoE checkpoint)
+        
         if any(k.startswith(f"{prefix}.shared_experts") for k in state_dict.keys()):
             continue
         fc1_w = state_dict.get(f"{prefix}.fc1.weight", None)
@@ -223,7 +223,7 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
         fc2_b = state_dict.get(f"{prefix}.fc2.bias", None)
         if fc1_w is None or fc2_w is None:
             continue
-        # Dense GELU shared experts
+        
         if hasattr(shared, "fc1") and hasattr(shared, "fc2"):
             gp_shape = shared.fc1.weight.shape
             dp_shape = shared.fc2.weight.shape
@@ -241,11 +241,11 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
                     print(f"↻ Skip copying to shared_experts for block {idx} (shape mismatch: "
                           f"fc1 {tuple(fc1_w.shape)} vs {tuple(gp_shape)}, "
                           f"fc2 {tuple(fc2_w.shape)} vs {tuple(dp_shape)})")
-        # SwiGLU shared experts (legacy)
+        
         elif hasattr(shared, "gate_proj") and hasattr(shared, "down_proj"):
             gp_shape = shared.gate_proj.weight.shape
             dp_shape = shared.down_proj.weight.shape
-            # Only copy when shapes match; otherwise keep shared_experts random.
+            
             if fc1_w.shape == gp_shape and fc2_w.shape == dp_shape:
                 state_dict[f"{prefix}.shared_experts.gate_proj.weight"] = fc1_w.clone()
                 state_dict[f"{prefix}.shared_experts.up_proj.weight"] = fc1_w.clone()
@@ -258,7 +258,7 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
                           f"fc1 {tuple(fc1_w.shape)} vs {tuple(gp_shape)}, "
                           f"fc2 {tuple(fc2_w.shape)} vs {tuple(dp_shape)})")
 
-        # Also seed routed experts with dense FFN when checkpoint is dense (no experts.* keys yet)
+        
         experts = getattr(mlp, "experts", None)
         if experts is None or any(k.startswith(f"{prefix}.experts.0") for k in state_dict.keys()):
             continue
@@ -271,12 +271,12 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
                 if verbose:
                     print(f"↻ Skip copying to expert {e_idx} in block {idx} (shape mismatch)")
                 continue
-            # copy dense weights
+            
             w1 = fc1_w.clone()
             w2 = fc2_w.clone()
             b1 = fc1_b.clone() if (fc1_b is not None and expert.fc1.bias is not None and expert.fc1.bias.shape == fc1_b.shape) else None
             b2 = fc2_b.clone() if (fc2_b is not None and expert.fc2.bias is not None and expert.fc2.bias.shape == fc2_b.shape) else None
-            # add small noise to non-shared experts to break symmetry
+            
             w1.add_(torch.randn_like(w1) * noise_std)
             w2.add_(torch.randn_like(w2) * noise_std)
             state_dict[f"{prefix}.experts.{e_idx}.fc1.weight"] = w1
@@ -290,9 +290,9 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
 
 
 
-#################################################################################
-#                                  Training Loop                                #
-#################################################################################
+
+
+
 
 def main(args):
     """Trains a new DiT model."""
@@ -302,11 +302,11 @@ def main(args):
     accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
     device = accelerator.device
 
-    # Setup an experiment folder:
+    
     if accelerator.is_main_process:
         os.makedirs(args.results_dir, exist_ok=True)
         experiment_index = len(glob(f"{args.results_dir}/*"))
-        model_string_name = args.model.replace("/", "-")  # e.g., DiT-XL/2 --> DiT-XL-2
+        model_string_name = args.model.replace("/", "-")  
         from datetime import datetime
         uuid = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         experiment_dir = f"{args.results_dir}/{experiment_index:03d}-{model_string_name}-{uuid}"
@@ -318,7 +318,7 @@ def main(args):
         logger = create_logger(experiment_dir)
         logger.info(f"Experiment directory created at {experiment_dir}")
 
-        # Save the current configuration for reproducibility
+        
         config_save_path = f"{experiment_dir}/config.yaml"
         save_config(args, config_save_path)
         logger.info(f"Configuration saved to {config_save_path}")
@@ -333,7 +333,7 @@ def main(args):
             run_name = args.wandb_run_name or f"{model_string_name}-{experiment_index:03d}"
             wandb_run = wandb.init(project=wandb_project, name=run_name, config=vars(args))
     else:
-        # place-holders for non-main process
+        
         experiment_dir = None
         checkpoint_dir = None
         eval_dir = None
@@ -341,7 +341,7 @@ def main(args):
         vae = None
         wandb_run = None
 
-    # Create model with CURRENT args
+    
     assert args.image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
     latent_size = args.image_size // 8
     pred_lens = args.predict_horizon
@@ -352,21 +352,21 @@ def main(args):
         args=args,
     )
 
-    # ==== Load and adapt pretrained weights (rgb_init) if provided ====
+    
     if args.rgb_init is not None:
         checkpoint = torch.load(args.rgb_init, map_location='cpu', weights_only=False)
         state_dict = checkpoint['model'] if isinstance(checkpoint, dict) and 'model' in checkpoint else checkpoint
 
-        # 1) Adapt input conv for horizon change (channel blocks)
+        
         adapt_x_embedder_weight(state_dict, model.state_dict(), verbose=accelerator.is_main_process)
 
-        # 2) Adapt final layer outputs per-frame block
+        
         adapt_final_layer_linear(state_dict, model.state_dict(), model, verbose=accelerator.is_main_process)
 
-        # 3) If current model uses MoE shared experts but ckpt is dense, copy dense FFN -> shared_experts
+        
         adapt_shared_moe_from_dense(state_dict, model, verbose=accelerator.is_main_process)
 
-        # 4) Load adapted weights (allow missing due to modules like y_embedder difference)
+        
         missing, unexpected = model.load_state_dict(state_dict, strict=False)
         if accelerator.is_main_process:
             print(f"✓ Successfully loaded & adapted pretrained weights from {args.rgb_init}")
@@ -375,7 +375,7 @@ def main(args):
             if unexpected:
                 print(f"Unexpected keys after load: {len(unexpected)}")
 
-        # 5) If text_cond changed, reset y_embedder to a simple class embedder
+        
         if not args.text_cond:
             with torch.no_grad():
                 model.y_embedder = nn.Linear(args.num_classes, model.hidden_size, bias=True)
@@ -383,9 +383,9 @@ def main(args):
                 nn.init.zeros_(model.y_embedder.bias)
             if accelerator.is_main_process:
                 print("✓ Re-initialized y_embedder for class-only guidance.")
-    # ================================================================
+    
 
-    # ==== Load checkpoint for resume training ====
+    
     start_epoch = 0
     start_step = 0
     resume_checkpoint = None
@@ -408,30 +408,30 @@ def main(args):
                     print(f"✓ Loaded model weights from: {args.resume}")
         else:
             raise FileNotFoundError(f"Resume checkpoint not found: {args.resume}")
-    # ====================================================
+    
 
     model = model.to(device)
 
     if not args.without_ema:
-        ema = deepcopy(model).to(device)  # EMA of the model
+        ema = deepcopy(model).to(device)  
         requires_grad(ema, False)
-    diffusion = create_diffusion(timestep_respacing="")  # default: 1000 steps, linear noise schedule
+    diffusion = create_diffusion(timestep_respacing="")  
     eval_diffusion = create_diffusion(str(250))
 
     if accelerator.is_main_process:
         logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
-        # Print force module status
+        
         use_force = getattr(args, 'use_force', False)
         logger.info(f"Force Module: {'ENABLED' if use_force else 'DISABLED'}")
         if use_force:
             logger.info(f"Force Dimension: {getattr(args, 'force_dim', 6)}")
-        # Print token structure
+        
         if hasattr(args, 'start_idx') and hasattr(args, 'end_idx'):
             logger.info(f"Token Structure: start_idx={args.start_idx}, end_idx={args.end_idx}")
             total_tokens = sum(args.end_idx) - sum(args.start_idx[:-1])
             logger.info(f"Total Tokens: {total_tokens} (RGB=256, Action={args.end_idx[1]-args.start_idx[1]}, Force={args.end_idx[2]-args.start_idx[2] if len(args.end_idx) > 2 else 0}, Depth={args.end_idx[3]-args.start_idx[3] if len(args.end_idx) > 3 else 0})")
 
-    # Optimizer
+    
     lr = float(getattr(args, 'learning_rate', 1e-4))
     weight_decay = float(getattr(args, 'weight_decay', 0.0))
     beta1 = float(getattr(args, 'adam_beta1', 0.9))
@@ -441,7 +441,7 @@ def main(args):
         adamw_kwargs["fused"] = True
     opt = torch.optim.AdamW(model.parameters(), **adamw_kwargs)
 
-    # Data
+    
     dataset = RobotDataset(args.feature_path, args)
     loader = DataLoader(
         dataset,
@@ -458,7 +458,7 @@ def main(args):
         logger.info(f"Global batch size {args.global_batch_size:,} num_processes ({accelerator.num_processes})")
         logger.info(f"Dataset contains {len(dataset):,} images ({args.feature_path})")
 
-    # Learning Rate Scheduler (after dataset is created)
+    
     lr_scheduler = None
     if getattr(args, 'use_lr_scheduler', False):
         scheduler_type = getattr(args, 'scheduler_type', 'cosine')
@@ -466,17 +466,17 @@ def main(args):
         min_lr_ratio = getattr(args, 'min_lr_ratio', 0.01)
         
         if scheduler_type == 'cosine':
-            # Custom cosine scheduler with warmup
+            
             total_steps = args.epochs * len(dataset) // args.global_batch_size
             cosine_steps = total_steps - warmup_steps
             min_lr = lr * min_lr_ratio
             
             def lr_lambda(current_step):
                 if current_step < warmup_steps:
-                    # Constant learning rate during warmup
+                    
                     return 1.0
                 else:
-                    # Cosine annealing after warmup
+                    
                     progress = (current_step - warmup_steps) / cosine_steps
                     return min_lr_ratio + (1 - min_lr_ratio) * 0.5 * (1 + math.cos(math.pi * progress))
             
@@ -485,29 +485,29 @@ def main(args):
             if accelerator.is_main_process:
                 logger.info(f"Using cosine annealing scheduler: warmup_steps={warmup_steps}, total_steps={total_steps}, min_lr_ratio={min_lr_ratio}")
         elif scheduler_type == 'constant':
-            # 恒定学习率调度器（不做衰减）
+            
             lr_scheduler = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=lambda _: 1.0)
             if accelerator.is_main_process:
                 logger.info("Using constant LR scheduler (no decay)")
 
-    # Prepare for distributed
+    
     if not args.without_ema:
-        update_ema(ema, model, decay=0)  # sync init
+        update_ema(ema, model, decay=0)  
         ema.eval()
-    model.train()  # important! enables embedding dropout for classifier-free guidance
+    model.train()  
     model, opt, loader = accelerator.prepare(model, opt, loader)
 
-    # Load optimizer and scheduler states for resume training
+    
     if resume_checkpoint is not None and 'optimizer' in resume_checkpoint:
         opt.load_state_dict(resume_checkpoint['optimizer'])
-        # 只有当当前构建了 lr_scheduler 且 checkpoint 中存在其状态时才恢复
+        
         if (
             lr_scheduler is not None
             and 'lr_scheduler' in resume_checkpoint
             and resume_checkpoint['lr_scheduler'] is not None
         ):
             lr_scheduler.load_state_dict(resume_checkpoint['lr_scheduler'])
-        # 如果希望用当前配置的学习率继续训练，重置优化器中的 lr/initial_lr
+        
         if getattr(args, 'learning_rate', None) is not None:
             lr_override = float(args.learning_rate)
             for pg in opt.param_groups:
@@ -517,7 +517,7 @@ def main(args):
         if accelerator.is_main_process:
             print(f"✓ Restored optimizer and scheduler states")
 
-    # Monitor vars
+    
     train_steps = start_step
     log_steps = 0
     running_loss = 0.0
@@ -536,9 +536,9 @@ def main(args):
         if not args.dynamics:
             raise NotImplementedError("Set --dynamics for dynamics modeling.")
         for x_cond, x, depth_cond, depth, action_cond, action, force_cond, y in loader:
-            # Shapes:
-            # x_cond: (B,1,4,H,W) -> (B,4,H,W)
-            # x:      (B,1,4*pred_lens,H,W) -> (B,4*pred_lens,H,W)
+            
+            
+            
             x_cond = x_cond.squeeze(dim=1).to(device)
             x = x.squeeze(dim=1).to(device)
             y = y.squeeze(dim=1).to(device)
@@ -610,14 +610,14 @@ def main(args):
             accelerator.backward(loss)
             opt.step()
             
-            # Step learning rate scheduler
+            
             if lr_scheduler is not None:
                 lr_scheduler.step()
             
             if not args.without_ema:
                 update_ema(ema, model)
 
-            # logging stats
+            
             running_loss += loss_dict["loss"].mean().item()
             if args.action_steps > 0 and "loss_a" in loss_dict:
                 running_loss_a += loss_dict["loss_a"].mean().item() * args.action_loss_lambda * (1.0 if train_steps > args.action_loss_start else 0.0)
@@ -639,7 +639,7 @@ def main(args):
                 avg_moe_aux = (running_moe_aux / log_steps) if (log_steps > 0 and getattr(args, "use_moe", False)) else 0.0
 
                 if accelerator.is_main_process:
-                    # Get current learning rate
+                    
                     current_lr = opt.param_groups[0]['lr']
                     log_msg = (f"(step={train_steps:07d}) Loss: {avg_loss:.6f}")
                     if args.action_steps > 0:
@@ -673,7 +673,7 @@ def main(args):
                 log_steps = 0
                 start_time = time()
 
-            # evaluate
+            
             if train_steps > 0 and train_steps % args.eval_every == 0:
                 if accelerator.is_main_process:
                     logger.info("start evaluating model")
@@ -704,11 +704,11 @@ def main(args):
                             eval_model_kwargs['noised_depth'] = noise_depth
                         if action_cond_b is not None:
                             eval_model_kwargs['action_cond'] = action_cond_b
-                        # 只在 force_cond 非 None 时传入
+                        
                         if force_cond_b is not None and torch.is_tensor(force_cond_b):
                             eval_model_kwargs['force_cond'] = force_cond_b
                         elif getattr(args, "use_force", False):
-                            # use_force=True 但数据为 None，传零张量
+                            
                             eval_model_kwargs['force_cond'] = torch.zeros(input_img.shape[0], 1, args.force_dim, device=device)
                         samples = eval_diffusion.p_sample_loop(
                             model, z.shape, z, clip_denoised=False, model_kwargs=eval_model_kwargs, progress=True,
@@ -757,7 +757,7 @@ def main(args):
                             eval_log["eval/best_action_loss"] = best_action_loss
                         wandb.log(eval_log, step=train_steps)
 
-                    # save qualitative imgs
+                    
                     img_save_path = os.path.join(eval_dir, 'step_' + str(train_steps))
                     os.makedirs(img_save_path, exist_ok=True)
                     if args.use_depth and depth_samples is not None:
@@ -786,10 +786,10 @@ def main(args):
 
                     model.train()
 
-            # Save checkpoint
+            
             if train_steps % args.ckpt_every == 0:
                 if accelerator.is_main_process:
-                    # Optionally skip optimizer/lr state to shrink checkpoint size.
+                    
                     if getattr(args, "save_model_only", False):
                         checkpoint = {
                             "model": model.module.state_dict() if accelerator.num_processes > 1 else model.state_dict(),
@@ -810,7 +810,7 @@ def main(args):
                     torch.save(checkpoint, checkpoint_path)
                     logger.info(f"Saved checkpoint to {checkpoint_path}")
 
-    model.eval()  # disable randomized embedding dropout
+    model.eval()  
 
     if accelerator.is_main_process:
         logger.info("Done!")
@@ -820,14 +820,14 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # Create argument parser with config file support
+    
     parser = argparse.ArgumentParser(description="Train DiT model with config file support")
 
-    # Config file arg
+    
     parser.add_argument("--config", type=str, default="default.yaml",
                         help="Path to YAML config file (default: configs/default.yaml)")
 
-    # Main args (can be overridden by config)
+    
     parser.add_argument("--feature-path", type=str)
     parser.add_argument("--results-dir", type=str)
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()))
@@ -851,38 +851,38 @@ if __name__ == "__main__":
                         help="If set, checkpoints only contain model weights (no optimizer/lr scheduler).")
     parser.add_argument("--without-ema", action="store_true")
 
-    # Checkpoint resume
+    
     parser.add_argument("--resume", type=str, help="Path to checkpoint to resume from")
 
-    # Init
+    
     parser.add_argument("--dit-init", type=str)
     parser.add_argument("--rgb-init", type=str)
 
-    # Model components
+    
     parser.add_argument("--attn-mask", action="store_true")
     parser.add_argument("--predict-horizon", type=int)
     parser.add_argument("--skip-step", type=int)
 
-    # Text conditioning
+    
     parser.add_argument("--dynamics", action="store_true")
     parser.add_argument("--text-cond", action="store_true")
     parser.add_argument("--clip-path", type=str)
     parser.add_argument("--text-emb-size", type=int)
 
-    # Depth
+    
     parser.add_argument("--use-depth", action="store_true")
     parser.add_argument("--d-hidden-size", type=int)
     parser.add_argument("--d-patch-size", type=int)
     parser.add_argument("--depth-filter", action="store_true")
 
-    # Force
+    
     parser.add_argument("--use-force", action="store_true")
     parser.add_argument("--force-dim", type=int)
     parser.add_argument("--force-stats-path", type=str)
     parser.add_argument("--force-mean", type=float, nargs="+")
     parser.add_argument("--force-std", type=float, nargs="+")
 
-    # Action
+    
     parser.add_argument("--learnable-action-pos", action="store_true")
     parser.add_argument("--action-steps", type=int)
     parser.add_argument("--action-dim", type=int)
@@ -890,11 +890,11 @@ if __name__ == "__main__":
     parser.add_argument("--absolute-action", action="store_true")
     parser.add_argument("--action-condition", action="store_true")
 
-    # Loss
+    
     parser.add_argument("--action-loss-lambda", type=float)
     parser.add_argument("--action-loss-start", type=int)
 
-    # MoE
+    
     parser.add_argument("--use-moe", action="store_true")
     parser.add_argument("--num-experts", type=int)
     parser.add_argument("--moe-top-k", type=int)
@@ -903,19 +903,19 @@ if __name__ == "__main__":
     parser.add_argument("--moe-start-layer", type=int)
     parser.add_argument("--moe-shared-experts", type=int)
 
-    # AdaLN - per-modality expert LayerNorms
+    
     parser.add_argument("--use-adamn", action="store_true",
                         help="Use per-modality adaptive LayerNorms in DiT blocks (CogVideoX style)")
 
-    # Wandb
+    
     parser.add_argument("--use-wandb", action="store_true")
     parser.add_argument("--wandb-project", type=str)
     parser.add_argument("--wandb-run-name", type=str)
 
-    # Parse CLI
+    
     cli_args = parser.parse_args()
 
-    # Load YAML config and merge with CLI
+    
     try:
         args = load_config(cli_args.config, "configs", cli_args)
         print(f"✓ Loaded configuration from: configs/{cli_args.config}")
@@ -928,7 +928,7 @@ if __name__ == "__main__":
         print("Falling back to command line arguments only...")
         args = cli_args
 
-    # Convert dashes to underscores for compatibility
+    
     for attr_name in dir(args):
         if '-' in attr_name and not attr_name.startswith('_'):
             new_name = attr_name.replace('-', '_')

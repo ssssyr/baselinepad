@@ -1,24 +1,24 @@
 META_CONFIG = {
-    'ckpt_path': "/mnt/sda/syr/checkpoint/checkpoint0114/best_action_loss.pt", # 使用你的模型
-    'vae_path': "/home/syr/code/models/sd-vae-ft-mse/", # 更新为正确的VAE路径
-    'clip_path': "/home/syr/code/models/clip-vit-base-patch32/", # 更新为正确的CLIP路径
+    'ckpt_path': "/mnt/sda/syr/checkpoint/checkpoint0114/best_action_loss.pt", 
+    'vae_path': "/home/syr/code/models/sd-vae-ft-mse/", 
+    'clip_path': "/home/syr/code/models/clip-vit-base-patch32/", 
     'thirdview_camera': 'corner3',
     'firstview_camera': 'gripperPOV',
-    'use_depth': False, # whether to use depth
-    'rollout_num': 1, # number of rollouts for each tasks
-    'max_steps': 35, # max planning steps for each rollout
+    'use_depth': False, 
+    'rollout_num': 1, 
+    'max_steps': 35, 
     'video_dir': "output",
     'visualize_prediction': True,
-    'denoise_steps': 16, # joint denoise step
+    'denoise_steps': 16, 
     'task_list': ['basketball-v2'], 
-    'random_seed': 42, # 固定随机种子，设为None则每次随机
+    'random_seed': 42, 
     'gpu_id': 0
 }
 
 BRIDGE_CONFIG = {
-    'ckpt_path': "/home/syr/code/models/pad_bridge_pre/bridge_pre.pt", # replace!
-    'vae_path': "/home/syr/code/models/sd-vae-ft-mse/", # replace!
-    'clip_path': "/home/syr/code/models/clip-vit-base-patch32/", # replace!
+    'ckpt_path': "/home/syr/code/models/pad_bridge_pre/bridge_pre.pt", 
+    'vae_path': "/home/syr/code/models/sd-vae-ft-mse/", 
+    'clip_path': "/home/syr/code/models/clip-vit-base-patch32/", 
     'sample_name':"sample_0"
 }
 

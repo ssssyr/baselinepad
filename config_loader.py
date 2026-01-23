@@ -20,7 +20,7 @@ class ConfigLoader:
         """Load configuration from YAML file."""
         config_path = Path(config_path)
         
-        # If path is relative, look in config_dir
+        
         if not config_path.is_absolute():
             config_path = self.config_dir / config_path
             
@@ -46,10 +46,10 @@ class ConfigLoader:
         """Convert config dictionary to argparse.Namespace object."""
         flat_config = self.flatten_config(config)
         
-        # Map flattened keys to argument names
+        
         args_dict = {}
         for key, value in flat_config.items():
-            # Convert nested keys to argument format
+            
             arg_name = key.replace('_', '-')
             args_dict[key.replace('-', '_')] = value
             
@@ -59,24 +59,24 @@ class ConfigLoader:
         """Merge YAML config with command line arguments, giving priority to CLI args."""
         flat_config = self.flatten_config(config)
         
-        # Start with config values
+        
         merged_dict = {}
         
-        # Map config keys to argument names
+        
         for key, value in flat_config.items():
             arg_key = key.replace('-', '_')
             merged_dict[arg_key] = value
         
-        # Override with command line arguments (only if they were explicitly set)
+        
         args_dict = vars(args)
         for key, value in args_dict.items():
-            # For boolean arguments (like action="store_true"), if YAML has a value and CLI has default False,
-            # prefer YAML value. Otherwise, use CLI value if it's not None.
+            
+            
             if isinstance(value, bool) and key in merged_dict and isinstance(merged_dict[key], bool):
-                # If CLI value is True (explicitly set), use it; otherwise prefer YAML value
+                
                 if value is True:
                     merged_dict[key] = value
-                # If CLI value is False (default), keep YAML value if it exists
+                
             elif value is not None:
                 merged_dict[key] = value
         
@@ -99,14 +99,14 @@ def load_config(config_file: str = "default.yaml",
     """
     loader = ConfigLoader(config_dir)
     
-    # Load YAML config
+    
     config = loader.load_yaml_config(config_file)
     
     if args is None:
-        # If no CLI args provided, just convert config to Namespace
+        
         return loader.create_args_from_config(config)
     else:
-        # Merge config with CLI args
+        
         return loader.merge_config_with_args(config, args)
 
 
@@ -114,7 +114,7 @@ def save_config(config: argparse.Namespace, save_path: str):
     """Save current configuration to YAML file."""
     config_dict = vars(config)
     
-    # Reconstruct nested structure
+    
     nested_config = {
         'training': {},
         'components': {},
@@ -122,7 +122,7 @@ def save_config(config: argparse.Namespace, save_path: str):
         'wandb': {}
     }
     
-    # Mapping of prefixes to sections
+    
     section_mapping = {
         'training': ['feature_path', 'video_path', 'results_dir', 'model', 'image_size',
                     'num_classes', 'predict_horizon', 'skip_step', 'epochs', 'global_batch_size',
@@ -139,7 +139,7 @@ def save_config(config: argparse.Namespace, save_path: str):
         'wandb': ['use_wandb', 'wandb_project', 'wandb_run_name']
     }
     
-    # Organize config into sections
+    
     for key, value in config_dict.items():
         placed = False
         for section, keys in section_mapping.items():
@@ -148,18 +148,18 @@ def save_config(config: argparse.Namespace, save_path: str):
                 placed = True
                 break
         
-        # If key doesn't fit in predefined sections, put it in training
+        
         if not placed:
             nested_config['training'][key] = value
     
-    # Save to YAML
+    
     with open(save_path, 'w', encoding='utf-8') as f:
         yaml.dump(nested_config, f, default_flow_style=False, indent=2)
 
 
-# Example usage and testing
+
 if __name__ == "__main__":
-    # Test the config loader
+    
     try:
         config = load_config("default.yaml")
         print("Successfully loaded config:")

@@ -1,7 +1,7 @@
-# Modified from OpenAI's diffusion repos
-#     GLIDE: https://github.com/openai/glide-text2im/blob/main/glide_text2im/gaussian_diffusion.py
-#     ADM:   https://github.com/openai/guided-diffusion/blob/main/guided_diffusion
-#     IDDPM: https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/gaussian_diffusion.py
+
+
+
+
 
 import numpy as np
 import torch as th
@@ -75,7 +75,7 @@ class SpacedDiffusion(GaussianDiffusion):
         self.timestep_map = []
         self.original_num_steps = len(kwargs["betas"])
 
-        base_diffusion = GaussianDiffusion(**kwargs)  # pylint: disable=missing-kwoa
+        base_diffusion = GaussianDiffusion(**kwargs)  
         last_alpha_cumprod = 1.0
         new_betas = []
         for i, alpha_cumprod in enumerate(base_diffusion.alphas_cumprod):
@@ -88,12 +88,12 @@ class SpacedDiffusion(GaussianDiffusion):
 
     def p_mean_variance(
         self, model, *args, **kwargs
-    ):  # pylint: disable=signature-differs
+    ):  
         return super().p_mean_variance(self._wrap_model(model), *args, **kwargs)
 
     def training_losses(
         self, model, *args, **kwargs
-    ):  # pylint: disable=signature-differs
+    ):  
         return super().training_losses(self._wrap_model(model), *args, **kwargs)
 
     def condition_mean(self, cond_fn, *args, **kwargs):
@@ -110,7 +110,7 @@ class SpacedDiffusion(GaussianDiffusion):
         )
 
     def _scale_timesteps(self, t):
-        # Scaling is done by the wrapped model.
+        
         return t
 
 
@@ -118,12 +118,12 @@ class _WrappedModel:
     def __init__(self, model, timestep_map, original_num_steps):
         self.model = model
         self.timestep_map = timestep_map
-        # self.rescale_timesteps = rescale_timesteps
+        
         self.original_num_steps = original_num_steps
 
     def __call__(self, x, ts, **kwargs):
         map_tensor = th.tensor(self.timestep_map, device=ts.device, dtype=ts.dtype)
         new_ts = map_tensor[ts]
-        # if self.rescale_timesteps:
-        #     new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
+        
+        
         return self.model(x, new_ts, **kwargs)

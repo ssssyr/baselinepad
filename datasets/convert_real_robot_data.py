@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Convert real robot zarr data to training format.
 
@@ -52,7 +52,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-# ==================== Image Preprocessing ====================
+
 
 def center_crop_arr(pil_image, image_size):
     """Center crops a PIL image to the specified size."""
@@ -72,7 +72,7 @@ def center_crop_arr(pil_image, image_size):
     return Image.fromarray(arr[crop_y: crop_y + image_size, crop_x: crop_x + image_size])
 
 
-# ==================== Zarr Data Reader ====================
+
 
 class ZarrDataReader:
     """Read robot state data from zarr format (flat storage with episode_ends)."""
@@ -81,7 +81,7 @@ class ZarrDataReader:
         import zarr
         self.zarr = zarr.open(zarr_path, 'r')
 
-        # Get episode boundaries
+        
         self.episode_ends = self.zarr['meta']['episode_ends'][:]
         self.num_episodes = len(self.episode_ends)
 
@@ -115,7 +115,7 @@ class ZarrDataReader:
             "gripper_force": self.zarr['data']['gripper_force'][start_idx:end_idx],
         }
 
-        # Validate data
+        
         n_steps = len(data["timestamp"])
         for key, val in data.items():
             if len(val) != n_steps:
@@ -124,7 +124,7 @@ class ZarrDataReader:
         return data
 
 
-# ==================== Video Frame Extractor ====================
+
 
 class VideoFrameExtractor:
     """Extract frames from video with timestamp alignment."""
@@ -171,11 +171,11 @@ class VideoFrameExtractor:
         if not ret:
             return None
 
-        # Convert BGR to RGB
+        
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
 
-# ==================== Main Converter ====================
+
 
 class RealRobotDataConverter:
     """Convert real robot zarr + video data to training format."""
@@ -189,19 +189,19 @@ class RealRobotDataConverter:
         self.device = f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu"
         self.multi_task = args.multi_task
 
-        # Setup output directory
+        
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # Initialize components (will be set per task in multi-task mode)
+        
         self.zarr_reader = None
         self.video_extractor = None
         self.current_task_dir = None
 
-        # Setup models
+        
         self._setup_models()
         self._setup_transform()
 
-        # Force stats
+        
         self.force_stats = {"count": 0, "mean": np.zeros(6, dtype=np.float64), "m2": np.zeros(6, dtype=np.float64)}
 
     def _setup_for_task(self, task_dir: str, instruction: str):
@@ -211,7 +211,7 @@ class RealRobotDataConverter:
         self.zarr_reader = ZarrDataReader(os.path.join(task_dir, "replay_buffer.zarr"))
         self.video_extractor = VideoFrameExtractor(os.path.join(task_dir, "videos"))
 
-        # Re-encode instruction
+        
         with torch.no_grad():
             text_inputs = self.clip_tokenizer([self.instruction], padding=True, return_tensors="pt").to(self.device)
             self.text_embed = self.clip_model(**text_inputs).text_embeds.cpu().numpy()
@@ -227,11 +227,11 @@ class RealRobotDataConverter:
         self.clip_tokenizer = AutoTokenizer.from_pretrained(self.args.clip_path)
         self.clip_model.eval()
 
-        # Encode instruction once (for single task mode)
+        
         if not self.multi_task:
             with torch.no_grad():
                 text_inputs = self.clip_tokenizer([self.instruction], padding=True, return_tensors="pt").to(self.device)
-                self.text_embed = self.clip_model(**text_inputs).text_embeds.cpu().numpy()  # (1, 512)
+                self.text_embed = self.clip_model(**text_inputs).text_embeds.cpu().numpy()  
 
     def _setup_transform(self):
         """Setup image preprocessing pipeline."""
@@ -258,7 +258,7 @@ class RealRobotDataConverter:
         with torch.no_grad():
             latent = self.vae.encode(img_tensor).latent_dist.sample().mul_(0.18215)
 
-        return latent.cpu().numpy()  # (1, 4, 32, 32)
+        return latent.cpu().numpy()  
 
     def _get_task_dirs(self) -> List[tuple]:
         """Get list of (task_dir, instruction) tuples.
@@ -269,16 +269,16 @@ class RealRobotDataConverter:
         if not self.multi_task:
             return [(self.input_dir, self.instruction)]
 
-        # Multi-task mode: scan subdirectories
+        
         tasks = []
         for item in os.listdir(self.input_dir):
             item_path = os.path.join(self.input_dir, item)
             if os.path.isdir(item_path):
-                # Check if it has the required structure
+                
                 zarr_path = os.path.join(item_path, "replay_buffer.zarr")
                 videos_path = os.path.join(item_path, "videos")
                 if os.path.exists(zarr_path) and os.path.exists(videos_path):
-                    # Use folder name as instruction
+                    
                     tasks.append((item_path, item))
                     logger.info(f"Found task: {item} -> {item_path}")
 
@@ -303,21 +303,21 @@ class RealRobotDataConverter:
                 logger.info(f"  Directory: {task_dir}")
                 logger.info(f"{'='*60}")
 
-                # Setup for this task
+                
                 self._setup_for_task(task_dir, instruction)
 
                 for ep_idx in range(self.zarr_reader.num_episodes):
-                    episode_id = str(ep_idx)  # Video directory uses string ID
+                    episode_id = str(ep_idx)  
                     logger.info(f"Processing episode {ep_idx+1}/{self.zarr_reader.num_episodes}: {episode_id}")
 
-                    # Load zarr data
+                    
                     episode_data = self.zarr_reader.load_episode_data(ep_idx)
 
                     if episode_data["timestamp"] is None or len(episode_data["timestamp"]) == 0:
                         logger.warning(f"Episode {ep_idx}: No timestamp data, skipping")
                         continue
 
-                    # Get video info
+                    
                     video_info = self.video_extractor.get_video_info(episode_id)
                     if video_info is None:
                         logger.warning(f"Episode {ep_idx}: No video found, skipping")
@@ -326,36 +326,36 @@ class RealRobotDataConverter:
                     logger.info(f"  Video: {video_info['frame_count']} frames, {video_info['fps']} fps, {video_info['duration']:.1f}s")
                     logger.info(f"  Zarr: {len(episode_data['timestamp'])} steps")
 
-                    # Create episode directory (use global episode index)
+                    
                     episode_dir = os.path.join(self.output_dir, f"episode{global_episode_idx:07d}")
                     os.makedirs(episode_dir, exist_ok=True)
 
-                    # Save text embedding (once per episode)
+                    
                     text_embed_path = os.path.join(episode_dir, "text_clip.npy")
                     np.save(text_embed_path, self.text_embed)
 
-                    # Get video start time (first timestamp)
+                    
                     video_start_time = episode_data["timestamp"][0]
 
-                    # Process each time step
+                    
                     n_steps = len(episode_data["timestamp"])
                     for step_idx in range(n_steps):
-                        # Extract state
+                        
                         pose = episode_data["robot_eef_pose"][step_idx]
                         x, y, z = pose[0], pose[1], pose[2]
                         grip = int(episode_data["gripper_target"][step_idx]) if episode_data["gripper_target"] is not None else 0
                         state = [float(x), float(y), float(z), float(grip)]
 
-                        # Extract force
+                        
                         if episode_data["gripper_force"] is not None:
                             force = episode_data["gripper_force"][step_idx].tolist()
                         else:
                             force = [0.0] * 6
 
-                        # Update force stats
+                        
                         self._update_force_stats(force)
 
-                        # Get corresponding video frame
+                        
                         timestamp = episode_data["timestamp"][step_idx]
                         time_from_start = timestamp - video_start_time
                         frame_img = self.video_extractor.extract_frame_at_time(video_info["path"], time_from_start)
@@ -364,14 +364,14 @@ class RealRobotDataConverter:
                             logger.warning(f"  Step {step_idx}: Failed to extract frame at t={time_from_start:.2f}s")
                             continue
 
-                        # Encode image
+                        
                         latent = self._encode_image(frame_img)
 
-                        # Save latent
+                        
                         latent_path = os.path.join(episode_dir, f"color_wrist_1_{step_idx:04d}.npy")
                         np.save(latent_path, latent)
 
-                        # Add to dataset info
+                        
                         all_dataset_info.append({
                             "episode": global_episode_idx,
                             "frame": step_idx,
@@ -386,14 +386,14 @@ class RealRobotDataConverter:
                     logger.info(f"  Saved {n_steps} frames for episode {episode_id}")
                     global_episode_idx += 1
 
-        # Save dataset info
+        
         json_path = os.path.join(self.output_dir, "dataset_rgb_s_d.json")
         with open(json_path, "w") as f:
             json.dump(all_dataset_info, f, indent=2, ensure_ascii=False)
         logger.info(f"Saved dataset info to {json_path}")
         logger.info(f"Total samples: {len(all_dataset_info)}")
 
-        # Save force stats
+        
         if self.force_stats["count"] > 0:
             denom = max(self.force_stats["count"] - 1, 1)
             var = self.force_stats["m2"] / denom
@@ -412,25 +412,25 @@ class RealRobotDataConverter:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert real robot zarr data to training format")
 
-    # Input/Output
+    
     parser.add_argument("--input", type=str, default="/mnt/sda/datasets/real_data",
                         help="Input directory (single task) or parent directory (multi-task)")
     parser.add_argument("--output", type=str, default="/mnt/sda/datasets/converted",
                         help="Output directory for converted data")
 
-    # Model paths
+    
     parser.add_argument("--vae-path", type=str, default="/home/syr/code/models/sd-vae-ft-mse",
                         help="Path to VAE model")
     parser.add_argument("--clip-path", type=str, default="/home/syr/code/models/clip-vit-base-patch32",
                         help="Path to CLIP model")
 
-    # Task description
+    
     parser.add_argument("--multi-task", action="store_true",
                         help="Enable multi-task mode: scan subdirectories and use folder names as instructions")
     parser.add_argument("--instruction", type=str, default="夹起魔方放到盘子里",
                         help="Task instruction for text embedding (single-task mode only)")
 
-    # Processing parameters
+    
     parser.add_argument("--image-size", type=int, default=256,
                         help="Image size after center crop")
     parser.add_argument("--gpu", type=int, default=0,
@@ -438,7 +438,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Run conversion
+    
     converter = RealRobotDataConverter(args)
     converter.convert()
 
