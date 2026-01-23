@@ -3,8 +3,8 @@ import torch.distributed as dist
 import argparse
 import os
 import json
-from models import DiT_models
-from diffusion import create_diffusion
+from src.models import DiT_models
+from src.diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
 from PIL import Image
 import numpy as np

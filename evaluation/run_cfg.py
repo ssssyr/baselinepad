@@ -10,7 +10,7 @@ META_CONFIG = {
     'video_dir': "output",
     'visualize_prediction': True,
     'denoise_steps': 16,
-    'task_list': ['basketball-v2'],
+    'task_list': ['button-press-v2'],
     'random_seed': 42,
     'gpu_id': 0
 }

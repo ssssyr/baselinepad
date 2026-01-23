@@ -16,7 +16,7 @@ import math
 from timm.models.vision_transformer import PatchEmbed, Mlp
 import torch.nn.functional as F
 
-from moe_blocks import SparseMoeBlock
+from .moe_blocks import SparseMoeBlock
 
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)

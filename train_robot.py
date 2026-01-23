@@ -31,13 +31,13 @@ from torchvision.utils import save_image
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-from config_loader import load_config, save_config
-from models import DiT_models
-from diffusion import create_diffusion
+from src.config_loader import load_config, save_config
+from src.models import DiT_models
+from src.diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
 
 
-from datasets.dataset import RobotDataset
+from src.datasets.dataset import RobotDataset
 
 
 
