@@ -76,11 +76,11 @@ def main(args):
     
     assert args.image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
     latent_size = args.image_size // 8
-    vae = AutoencoderKL.from_pretrained("/home/syr/code/models/sd-vae-ft-mse/").to(device)
+    vae = AutoencoderKL.from_pretrained("None/").to(device)
     
     from transformers import AutoTokenizer, CLIPTextModelWithProjection
-    model = CLIPTextModelWithProjection.from_pretrained("/home/syr/code/models/clip-vit-base-patch32").to(device)
-    tokenizer = AutoTokenizer.from_pretrained("/home/syr/code/models/clip-vit-base-patch32/")
+    model = CLIPTextModelWithProjection.from_pretrained("None").to(device)
+    tokenizer = AutoTokenizer.from_pretrained("None/")
 
     
     transform = transforms.Compose([

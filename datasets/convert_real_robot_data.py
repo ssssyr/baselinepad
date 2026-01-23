@@ -2,11 +2,11 @@
 """
 Convert real robot zarr data to training format.
 
-Source (single task): /mnt/sda/datasets/real_data/
+Source (single task): None/
   - replay_buffer.zarr/  (robot state data)
   - videos/              (camera videos)
 
-Source (multi task): /mnt/sda/datasets/real_data/
+Source (multi task): None/
   - task_folder_1/       (folder name = instruction)
     - replay_buffer.zarr/
     - videos/
@@ -23,13 +23,13 @@ Output: Compatible with RobotDataset
 
 Usage (single task):
     python convert_real_robot_data.py \
-        --input /mnt/sda/datasets/real_data/task_folder \
-        --output /mnt/sda/datasets/converted
+        --input None/task_folder \
+        --output None
 
 Usage (multi task):
     python convert_real_robot_data.py \
-        --input /mnt/sda/datasets/real_data \
-        --output /mnt/sda/datasets/converted \
+        --input None \
+        --output None \
         --multi-task
 """
 
@@ -413,15 +413,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert real robot zarr data to training format")
 
     
-    parser.add_argument("--input", type=str, default="/mnt/sda/datasets/real_data",
+    parser.add_argument("--input", type=str, default="None",
                         help="Input directory (single task) or parent directory (multi-task)")
-    parser.add_argument("--output", type=str, default="/mnt/sda/datasets/converted",
+    parser.add_argument("--output", type=str, default="None",
                         help="Output directory for converted data")
 
     
-    parser.add_argument("--vae-path", type=str, default="/home/syr/code/models/sd-vae-ft-mse",
+    parser.add_argument("--vae-path", type=str, default="None",
                         help="Path to VAE model")
-    parser.add_argument("--clip-path", type=str, default="/home/syr/code/models/clip-vit-base-patch32",
+    parser.add_argument("--clip-path", type=str, default="None",
                         help="Path to CLIP model")
 
     

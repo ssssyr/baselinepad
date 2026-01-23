@@ -6,7 +6,7 @@
 # ======================================================
 training:
   # Paths
-  feature_path: "/home/ct_24210860031/812datasets/SYR/real_data_converted2"  # Path to MetaWorld data
+  feature_path: null
   video_path: null
   results_dir: "results_metaworld_4d"
 
@@ -14,34 +14,34 @@ training:
   model: "DiT-XL/2"
   image_size: 256
   num_classes: 1000
-  predict_horizon: 3    # Number of future frames to predict
-  skip_step: 4          # Steps to skip between frames
+  predict_horizon: 3
+  skip_step: 4
 
   # Training Loop
-  epochs: 500            # ~3e5 steps左右（数据集约19万样本，global batch=128，4卡）
+  epochs: 500
   global_batch_size: 64
   global_seed: 42
   num_workers: 16
   without_ema: false
-  
+
   # Optimizer Settings
-  learning_rate: 1e-4   # Learning rate for AdamW optimizer
-  weight_decay: 0.0     # Weight decay for AdamW optimizer
-  adam_beta1: 0.9       # AdamW beta1 parameter
-  adam_beta2: 0.999     # AdamW beta2 parameter
+  learning_rate: 1e-4
+  weight_decay: 0.0
+  adam_beta1: 0.9
+  adam_beta2: 0.999
 
   # Learning Rate Scheduler Settings
-  use_lr_scheduler: true       # Enable cosine decay
+  use_lr_scheduler: true
   scheduler_type: "cosine"
   warmup_steps: 8000
-  min_lr_ratio: 0.01           # Decay to 1% of initial LR
+  min_lr_ratio: 0.01
 
   # Logging and Checkpointing
   log_every: 100
-  eval_every: 50000   # 更频繁评估以匹配更短训练
+  eval_every: 50000
   ckpt_every: 10000
   ckpt_wrapper: false
-  save_model_only: true  # 若为 true，则 checkpoint 仅保存模型权重
+  save_model_only: true
 
   # Resuming Training
   resume: null
@@ -53,11 +53,11 @@ training:
 components:
   # VAE
   vae: "ema"
-  vae_path: "/home/ct_24210860031/812code/SYR/models/sd-vae-ft-mse"  # Path to VAE model directory
+  vae_path: null
 
   # Initialization
   dit_init: null
-  rgb_init: "/home/ct_24210860031/812code/SYR/models/pad_bridge_pre/bridge_pre.pt"
+  rgb_init: null
 
   # Attention
   attn_mask: true
@@ -67,7 +67,7 @@ components:
 
   # Text Conditioning - Enable for MetaWorld task instructions
   text_cond: true
-  clip_path: "/home/ct_24210860031/812code/SYR/models/clip-vit-base-patch32"
+  clip_path: null
   text_emb_size: 512
 
   # Depth Conditioning - Disable for MetaWorld
@@ -77,36 +77,36 @@ components:
   depth_filter: false
 
   # Action Conditioning - DISABLED to enable proper temporal prediction
-  action_steps: 3           # Number of action steps to predict/condition on
-  action_dim: 4             # 4-DOF action space for MetaWorld
-  action_scale: 1        # Scaling factor for actions
-  absolute_action: true     # Use absolute actions instead of relative
-  action_condition: true   # Disable action conditioning to enable temporal learning
-  learnable_action_pos: false # Use fixed sin-cos positional embeddings for actions
+  action_steps: 3
+  action_dim: 4
+  action_scale: 1
+  absolute_action: true
+  action_condition: true
+  learnable_action_pos: false
 
-  # Force Conditioning - 六维力/力矩输入
-  use_force: false              # Enable 6D force/torque input
-  force_dim: 6                # [fx, fy, fz, tx, ty, tz]
-  force_stats_path: null      # Will auto-detect from feature_path/force_stats.json
+  # Force Conditioning
+  use_force: false
+  force_dim: 6
+  force_stats_path: null
 
   # AdaLN - per-modality expert LayerNorms (CogVideoX style)
-  adamn: true                 # Enable per-modality adaptive LayerNorm
+  adamn: true
 
   # Loss Configuration
-  action_loss_lambda: 2.0   # Weight for the action prediction loss
-  action_loss_start: 0     # Start applying action loss from step 0
+  action_loss_lambda: 2.0
+  action_loss_start: 0
 
 # ======================================================
 #                  MoE Settings
 # ======================================================
 moe:
-  use_moe: true             # Enable Mixture of Experts
+  use_moe: true
   num_experts: 4
   moe_top_k: 1
   aux_loss_weight: 0.01
   router_z_loss_weight: 0.001
-  moe_start_layer: 14       # use MoE from layer index 14 (i.e., back 14 layers)
-  moe_shared_experts: 4     # match dense FFN width (1152*4) so shared branch can load pretrained weights
+  moe_start_layer: 14
+  moe_shared_experts: 4
 
 # ======================================================
 #                  WandB Logging
@@ -120,8 +120,8 @@ wandb:
 #               MetaWorld Environment Settings
 # ======================================================
 metaworld:
-  task_names: ["button-press-v2"]  # MetaWorld tasks
-  data_path: ""  # Path to original MetaWorld data (if available)
-  image_size: 256  # Image resolution for MetaWorld
-  use_depth: false  # Disable depth for MetaWorld
-  camera_name: "corner3"  # Camera view for MetaWorld
+  task_names: ["button-press-v2"]
+  data_path: ""
+  image_size: 256
+  use_depth: false
+  camera_name: "corner3"

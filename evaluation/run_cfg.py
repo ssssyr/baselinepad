@@ -1,24 +1,24 @@
 META_CONFIG = {
-    'ckpt_path': "/mnt/sda/syr/checkpoint/checkpoint0114/best_action_loss.pt", 
-    'vae_path': "/home/syr/code/models/sd-vae-ft-mse/", 
-    'clip_path': "/home/syr/code/models/clip-vit-base-patch32/", 
+    'ckpt_path': None,
+    'vae_path': None,
+    'clip_path': None,
     'thirdview_camera': 'corner3',
     'firstview_camera': 'gripperPOV',
-    'use_depth': False, 
-    'rollout_num': 1, 
-    'max_steps': 35, 
+    'use_depth': False,
+    'rollout_num': 1,
+    'max_steps': 35,
     'video_dir': "output",
     'visualize_prediction': True,
-    'denoise_steps': 16, 
-    'task_list': ['basketball-v2'], 
-    'random_seed': 42, 
+    'denoise_steps': 16,
+    'task_list': ['basketball-v2'],
+    'random_seed': 42,
     'gpu_id': 0
 }
 
 BRIDGE_CONFIG = {
-    'ckpt_path': "/home/syr/code/models/pad_bridge_pre/bridge_pre.pt", 
-    'vae_path': "/home/syr/code/models/sd-vae-ft-mse/", 
-    'clip_path': "/home/syr/code/models/clip-vit-base-patch32/", 
+    'ckpt_path': None,
+    'vae_path': None,
+    'clip_path': None,
     'sample_name':"sample_0"
 }
 

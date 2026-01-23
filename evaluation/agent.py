@@ -31,7 +31,7 @@ def load_force_stats(args):
     return np.zeros(6, dtype=np.float32), np.ones(6, dtype=np.float32)
 
 class DiffusionAgent():
-    def __init__(self, ckpt_path, vae_path="/cephfs/shared/llm/sd-vae-ft-mse", clip_path="/cephfs/shared/llm/clip-vit-base-patch32",denoise_steps=200, device_id=0):
+    def __init__(self, ckpt_path, vae_path=None, clip_path=None, denoise_steps=200, device_id=0):
         
         torch.serialization.add_safe_globals([argparse.Namespace])
 
@@ -325,19 +325,16 @@ class DiffusionAgent():
 
 
 if __name__ == "__main__":
-    
-    agent = DiffusionAgent(ckpt_path="/cephfs/cjyyj/dit_ckpt/063-DiT-XL-2-2024-04-26-21-58-30/checkpoints/0120000.pt")
 
-    
-    rgb = Image.open("/cephfs/shared/panda_real_data_processed/2024-04-26-pick_random/episode0000409/color_wrist_1_0000.jpg").convert("RGB")
-    rgb = np.array(rgb)
-    
-    depth = np.load("/cephfs/shared/panda_real_data_processed/2024-04-26-pick_random/episode0000409/depth_wrist_1_0000.npy")
+    agent = DiffusionAgent(ckpt_path=None)
+
+    rgb = None
+    depth = None
     text = "pick the blue block"
 
     samples,sample_a,sample_depth = agent.action(text, rgb, depth)
     if sample_a is not None:
         print(sample_a)
     agent.decode(rgb, samples)
-    
-        
+
+

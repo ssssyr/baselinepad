@@ -312,7 +312,7 @@ def main(args):
         experiment_dir = f"{args.results_dir}/{experiment_index:03d}-{model_string_name}-{uuid}"
         checkpoint_dir = f"{experiment_dir}/checkpoints"
         eval_dir = f"{experiment_dir}/eval"
-        vae_path = getattr(args, 'vae_path', "/cephfs/shared/llm/sd-vae-ft-mse")
+        vae_path = getattr(args, 'vae_path', None)
         vae = AutoencoderKL.from_pretrained(vae_path, local_files_only=True).to(device)
         os.makedirs(checkpoint_dir, exist_ok=True)
         logger = create_logger(experiment_dir)

@@ -9,7 +9,7 @@ set -e
 
 # ---- 0) 项目根目录（自动定位为脚本所在目录） ----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/configs/metaworld_4d.yaml"
+CONFIG_FILE="$SCRIPT_DIR/configs/finetune.yaml"
 TRAIN_SCRIPT="$SCRIPT_DIR/train_robot.py"
 
 # ---- 1) 打印基础信息 ----
@@ -20,7 +20,7 @@ echo "🖥️  GPUs:    4,5,6,7 (A100)"
 
 # ---- 2) 数据与结果目录 ----
 # 从配置文件中读取feature_path，确保与yaml配置一致
-FEATURE_PATH=$(python3 -c "import yaml; config = yaml.safe_load(open('$CONFIG_FILE')); print(config['training']['feature_path'])" 2>/dev/null || echo "/home/ct_24210860031/812datasets/SYR/feature_complete")
+FEATURE_PATH=$(python3 -c "import yaml; config = yaml.safe_load(open('$CONFIG_FILE')); print(config['training']['feature_path'])" 2>/dev/null || echo "null")
 echo "🔍 Feature path from config: $FEATURE_PATH"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$SCRIPT_DIR/results/metaworld_a100_${TIMESTAMP}"
@@ -50,14 +50,13 @@ echo ""
 read -p "🔄 Do you want to resume from checkpoint? (y/n): " RESUME_CHOICE
 if [[ "$RESUME_CHOICE" =~ ^[Yy]$ ]]; then
     echo "📁 Please enter the full path to your checkpoint file:"
-    echo "   Example: /home/ct_24210860031/812code/SYR/baselinepad/results/metaworld_a100_20251119_014323/000-DiT-XL-2-2025-11-19-01-43-46/checkpoints/0020000.pt"
     read -p "🎯 Checkpoint path: " CHECKPOINT_PATH
-    
+
     if [ ! -f "$CHECKPOINT_PATH" ]; then
         echo "❌ ERROR: Checkpoint file '$CHECKPOINT_PATH' not found!"
         exit 1
     fi
-    
+
     echo "✅ Found checkpoint: $CHECKPOINT_PATH"
     echo "🔄 Training will resume from this checkpoint..."
 else
@@ -72,11 +71,10 @@ echo "📊 WandB:       $WANDB_PROJECT / $WANDB_RUN_NAME"
 # ---- 6) 系统环境优化（可选）----
 export TORCH_CUDNN_V8_API_ENABLED=1
 export NCCL_DEBUG=WARN
-export NCCL_TIMEOUT=1800  # 30分钟超时
-# DSW 环境建议禁用 IB/P2P，并指定网卡，开启异步错误处理和阻塞等待，防止 NCCL 超时后集群乱序
+export NCCL_TIMEOUT=1800
 export NCCL_IB_DISABLE=1
 export NCCL_P2P_DISABLE=1
-export NCCL_SOCKET_IFNAME=eth0  # 按需改成实际网卡名
+export NCCL_SOCKET_IF_NAME=eth0
 export NCCL_ASYNC_ERROR_HANDLING=1
 export NCCL_BLOCKING_WAIT=1
 export OMP_NUM_THREADS=1
@@ -106,13 +104,8 @@ if [ ! -f "$TRAIN_SCRIPT" ]; then
   exit 1
 fi
 
-if [ ! -d "$FEATURE_PATH" ]; then
+if [ "$FEATURE_PATH" != "null" ] && [ ! -d "$FEATURE_PATH" ]; then
   echo "❌ ERROR: Feature data directory '$FEATURE_PATH' not found!"
-  exit 1
-fi
-
-if [ ! -f "$FEATURE_PATH/dataset_rgb_s_d.json" ]; then
-  echo "❌ ERROR: '$FEATURE_PATH/dataset_rgb_s_d.json' not found!"
   exit 1
 fi
 

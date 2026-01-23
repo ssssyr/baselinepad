@@ -2,7 +2,7 @@
 """
 Convert npz format robot data to training format.
 
-Source (multi task): /mnt/sda/datasets/real_data/
+Source (multi task): None/
   - task_folder_1/       (folder name = instruction)
     - episode_XXXX.npz   (image, action, robot_pose, gripper_state, force_torque)
     - episode_XXXX_vis/  (visualization images, optional)
@@ -26,8 +26,8 @@ Output: Compatible with RobotDataset
 
 Usage:
     python convert_npz_data.py \
-        --input /mnt/sda/datasets/real_data \
-        --output /mnt/sda/datasets/real_data_converted \
+        --input None \
+        --output None_converted \
         --multi-task
 """
 
@@ -300,15 +300,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert npz format robot data to training format")
 
     
-    parser.add_argument("--input", type=str, default="/mnt/sda/datasets/real_data",
+    parser.add_argument("--input", type=str, default="None",
                         help="Input directory (single task) or parent directory (multi-task)")
-    parser.add_argument("--output", type=str, default="/mnt/sda/datasets/real_data_converted",
+    parser.add_argument("--output", type=str, default="None_converted",
                         help="Output directory for converted data")
 
     
-    parser.add_argument("--vae-path", type=str, default="/home/syr/code/models/sd-vae-ft-mse",
+    parser.add_argument("--vae-path", type=str, default="None",
                         help="Path to VAE model")
-    parser.add_argument("--clip-path", type=str, default="/home/syr/code/models/clip-vit-base-patch32",
+    parser.add_argument("--clip-path", type=str, default="None",
                         help="Path to CLIP model")
 
     
