@@ -39,26 +39,9 @@ from diffusers.models import AutoencoderKL
 # dataset
 from datasets.dataset import RobotDataset
 
-# Gradient tracking for per-expert modality decomposition
-try:
-    from grad_tracker import (
-        enable_grad_tracking,
-        disable_grad_tracking,
-        is_grad_tracking_enabled,
-        get_gradient_summary,
-        get_layer_aggregated,
-        clear_gradients,
-        create_expert_backward_hook,
-    )
-    GRAD_TRACKER_AVAILABLE = True
-except ImportError:
-    GRAD_TRACKER_AVAILABLE = False
-    def enable_grad_tracking(): pass
-    def disable_grad_tracking(): pass
-    def is_grad_tracking_enabled(): return False
-    def get_gradient_summary(): return {}
-    def get_layer_aggregated(): return {}
-    def clear_gradients(): pass
+
+# Removed gradient tracking for simplified open-source version
+GRAD_TRACKER_AVAILABLE = False
 
 
 #################################################################################
@@ -92,40 +75,6 @@ def create_logger(logging_dir):
     logger = logging.getLogger(__name__)
     return logger
 
-
-def register_expert_gradient_hooks(model):
-    """
-    Register backward hooks on all expert FFNs to track gradient decomposition.
-
-    Args:
-        model: The DiT model (unwrapped from accelerator/DDP)
-
-    Returns:
-        List of hook handles that can be removed later
-    """
-    if not GRAD_TRACKER_AVAILABLE:
-        return []
-
-    hooks = []
-    model_for_hooks = model
-
-    # Handle DDP wrapper
-    if hasattr(model, 'module'):
-        model_for_hooks = model.module
-
-    # Iterate through all blocks to find MoE experts
-    for layer_idx, block in enumerate(model_for_hooks.blocks):
-        if hasattr(block, 'use_moe') and block.use_moe:
-            moe_block = block.mlp
-            if hasattr(moe_block, 'experts'):
-                for expert_idx, expert in enumerate(moe_block.experts):
-                    # Create and register the backward hook
-                    hook = expert.register_full_backward_hook(
-                        create_expert_backward_hook(layer_idx, expert_idx)
-                    )
-                    hooks.append(hook)
-
-    return hooks
 
 
 #################################################################################
@@ -340,61 +289,6 @@ def adapt_shared_moe_from_dense(state_dict, model, verbose=True):
             print(f"✓ Seeded {len(experts)} experts from dense FFN for block {idx} (noise stdd={noise_std})")
 
 
-#################################################################################
-#                             Gate Scores Logging                                #
-#################################################################################
-
-def save_gate_scores(gate_scores_list, step, save_dir, modality_bias_strength=None):
-    """
-    Save gate scores to disk for analysis.
-
-    Args:
-        gate_scores_list: List of dicts from different MoE blocks
-        step: Current training step
-        save_dir: Directory to save the data
-        modality_bias_strength: Current modality bias strength (for metadata)
-    """
-    if gate_scores_list is None or len(gate_scores_list) == 0:
-        return
-
-    try:
-        import json
-
-        os.makedirs(save_dir, exist_ok=True)
-        save_path = os.path.join(save_dir, f"gate_scores_step_{step}.json")
-
-        # Convert tensors to lists for JSON serialization
-        serializable_data = []
-        for block_idx, block_data in enumerate(gate_scores_list):
-            if block_data is None:
-                continue
-
-            block_entry = {
-                'block_idx': block_idx,
-                'logits': block_data.get('logits').cpu().tolist() if block_data.get('logits') is not None else None,
-                'logits_before_bias': block_data.get('logits_before_bias').cpu().tolist() if block_data.get('logits_before_bias') is not None else None,
-                'modality_ids': block_data.get('modality_ids').cpu().tolist() if block_data.get('modality_ids') is not None else None,
-            }
-            serializable_data.append(block_entry)
-
-        metadata = {
-            'step': step,
-            'num_blocks': len(serializable_data),
-            'modality_bias_strength': modality_bias_strength,
-        }
-
-        output = {
-            'metadata': metadata,
-            'blocks': serializable_data
-        }
-
-        with open(save_path, 'w') as f:
-            json.dump(output, f, indent=2)
-
-        print(f"✓ Saved gate scores to {save_path}")
-    except Exception as e:
-        print(f"⚠ Failed to save gate scores: {e}")
-
 
 #################################################################################
 #                                  Training Loop                                #
@@ -603,15 +497,6 @@ def main(args):
     model.train()  # important! enables embedding dropout for classifier-free guidance
     model, opt, loader = accelerator.prepare(model, opt, loader)
 
-    # Register gradient tracking hooks on all expert FFNs
-    expert_hooks = []
-    if GRAD_TRACKER_AVAILABLE and getattr(args, 'track_expert_gradients', False):
-        # Need to unwrap from accelerator for hook registration
-        unwrapped_model = accelerator.unwrap_model(model)
-        expert_hooks = register_expert_gradient_hooks(unwrapped_model)
-        if accelerator.is_main_process and logger:
-            logger.info(f"✓ Registered {len(expert_hooks)} expert gradient hooks")
-
     # Load optimizer and scheduler states for resume training
     if resume_checkpoint is not None and 'optimizer' in resume_checkpoint:
         opt.load_state_dict(resume_checkpoint['optimizer'])
@@ -639,10 +524,6 @@ def main(args):
     running_loss_a = 0.0
     running_loss_d = 0.0
     running_moe_aux = 0.0
-    routing_sums = {}
-    routing_counts = {}
-    grad_sums = {}
-    grad_counts = {}
     start_time = time()
     eval_batch = None
     best_action_loss = 1e8
@@ -725,117 +606,8 @@ def main(args):
                 if aux_tensor is not None:
                     moe_aux_metric = aux_tensor.item()
 
-                # Enhanced routing stats collection with per-layer tracking
-                routing_stats = accelerator.unwrap_model(model).get_last_routing_stats()
-                if routing_stats is not None:
-                    for k, v in routing_stats.items():
-                        # Handle tensor values (for multi-GPU reduction later)
-                        if isinstance(v, torch.Tensor):
-                            if k not in routing_sums:
-                                routing_sums[k] = []
-                                routing_counts[k] = 0
-                            routing_sums[k].append(v.detach().cpu())
-                            routing_counts[k] += 1
-                        else:
-                            # Handle scalar values
-                            routing_sums[k] = routing_sums.get(k, 0.0) + float(v)
-                            routing_counts[k] = routing_counts.get(k, 0) + 1
-
-                # Save gate scores periodically (every 1000 steps) for analysis
-                if accelerator.is_main_process and train_steps > 0 and train_steps % 1000 == 0:
-                    gate_scores = accelerator.unwrap_model(model).get_last_gate_scores()
-                    if gate_scores is not None:
-                        gate_scores_dir = os.path.join(experiment_dir, "gate_scores_analysis")
-                        modality_bias = getattr(args, "modality_bias_strength_action", None)
-                        save_gate_scores(gate_scores, train_steps, gate_scores_dir, modality_bias)
-
-            # Control gradient tracking: enable only on specific steps
-            # This allows us to collect gradient decomposition data without overhead every step
-            if GRAD_TRACKER_AVAILABLE and getattr(args, 'track_expert_gradients', False):
-                track_interval = getattr(args, 'gradient_track_interval', 1000)
-                if train_steps > 0 and train_steps % track_interval == 0:
-                    enable_grad_tracking()
-                else:
-                    disable_grad_tracking()
-
             opt.zero_grad()
             accelerator.backward(loss)
-
-            # === Enhanced gradient norm monitoring ===
-            grad_stats = {}
-            model_for_grad = accelerator.unwrap_model(model)
-            collect_detailed_grad = getattr(args, "collect_stats", False)
-
-            for name, param in model_for_grad.named_parameters():
-                if param.grad is not None:
-                    grad_norm = param.grad.norm().item()
-
-                    # A. Action head vs RGB head gradient norms
-                    if "final_layer.a_linear" in name or "final_layer.a_head" in name:
-                        grad_stats["grad_norm/action_head"] = grad_norm
-                    elif "final_layer.linear" in name and "a_linear" not in name:
-                        # RGB head (final_layer.linear)
-                        grad_stats["grad_norm/rgb_head"] = grad_norm
-
-                    # B. Router (MoE gate) gradient norms
-                    elif "gate.weight" in name or "gate.modality_bias" in name:
-                        grad_stats["grad_norm/router"] = grad_stats.get("grad_norm/router", 0.0) + grad_norm
-
-                    # C. Expert AdaLN gradients (per modality)
-                    if "norm1_experts" in name:
-                        modality_id = name.split(".")[2]
-                        modality_name = {0: "rgb", 1: "action", 2: "depth", 3: "force"}.get(int(modality_id), f"mod_{modality_id}")
-                        grad_stats[f"grad_norm/adaln_norm1_{modality_name}"] = grad_norm
-                    elif "norm2_experts" in name:
-                        modality_id = name.split(".")[2]
-                        modality_name = {0: "rgb", 1: "action", 2: "depth", 3: "force"}.get(int(modality_id), f"mod_{modality_id}")
-                        grad_stats[f"grad_norm/adaln_norm2_{modality_name}"] = grad_norm
-
-                    # D. Shared expert FFN gradients (for comparison)
-                    elif "shared_experts" in name and "fc" in name:
-                        grad_stats["grad_norm/shared_experts"] = grad_stats.get("grad_norm/shared_experts", 0.0) + grad_norm
-
-                    # E. Per-expert FFN gradients (key evidence for modality bias)
-                    # Pattern: blocks.X.mlp.experts.Y.fc1.weight or blocks.X.mlp.experts.Y.fc2.weight
-                    if ".experts." in name and "fc" in name:
-                        # Extract expert index: blocks.N.mlp.experts.Y.fc1.weight -> Y
-                        parts = name.split(".")
-                        if "experts" in parts:
-                            expert_idx_pos = parts.index("experts") + 1
-                            if expert_idx_pos < len(parts):
-                                expert_idx_str = parts[expert_idx_pos]
-                                if expert_idx_str.isdigit():
-                                    expert_idx = int(expert_idx_str)
-                                    grad_stats[f"grad_norm/expert_{expert_idx}"] = grad_stats.get(f"grad_norm/expert_{expert_idx}", 0.0) + grad_norm
-
-            # Calculate grad ratios
-            # A. Head ratio: action_head / rgb_head
-            if "grad_norm/action_head" in grad_stats and "grad_norm/rgb_head" in grad_stats:
-                eps = 1e-8
-                grad_stats["grad_norm/ratio_head"] = grad_stats["grad_norm/action_head"] / (grad_stats["grad_norm/rgb_head"] + eps)
-
-            # B. Expert specialization ratio (key for proving modality bias works)
-            # Compare: How much MORE does expert_0 get compared to others?
-            if all(f"grad_norm/expert_{i}" in grad_stats for i in range(4)):
-                expert_grads = [grad_stats[f"grad_norm/expert_{i}"] for i in range(4)]
-                expert_0_vs_others = expert_grads[0] / (sum(expert_grads[1:]) / 3 + 1e-8)
-                grad_stats["grad_norm/expert_0_vs_others_ratio"] = expert_0_vs_others
-
-                # C. Expert 0 concentration: what % of total expert gradients goes to expert_0?
-                total_expert_grad = sum(expert_grads)
-                grad_stats["grad_norm/expert_0_concentration"] = expert_grads[0] / (total_expert_grad + 1e-8)
-
-                # D. RGB gradient spread (should be uniform across experts)
-                # Calculate coefficient of variation (std/mean) - lower = more uniform
-                expert_cv = np.std(expert_grads) / (np.mean(expert_grads) + 1e-8)
-                grad_stats["grad_norm/expert_cv"] = expert_cv
-
-            # Accumulate grad stats
-            for key in grad_stats:
-                grad_sums[key] = grad_sums.get(key, 0.0) + grad_stats[key]
-                grad_counts[key] = grad_counts.get(key, 0) + 1
-            # =============================================
-
             opt.step()
             
             # Step learning rate scheduler
@@ -866,80 +638,23 @@ def main(args):
                 avg_loss_d = (running_loss_d / log_steps) if log_steps > 0 else 0.0
                 avg_moe_aux = (running_moe_aux / log_steps) if (log_steps > 0 and getattr(args, "use_moe", False)) else 0.0
 
-                # Enhanced routing stats aggregation with multi-GPU support
-                routing_avg = {}
-                for k in routing_sums:
-                    cnt = routing_counts.get(k, 0)
-                    if cnt <= 0:
-                        continue
-
-                    # Handle list of tensors (histograms) - need multi-GPU reduction
-                    if isinstance(routing_sums[k], list):
-                        # Stack tensors and sum across GPUs
-                        tensor_list = routing_sums[k]
-                        if tensor_list:
-                            stacked = torch.stack(tensor_list).sum(dim=0)  # (num_experts,)
-                            # Note: For proper multi-GPU, we'd need all_reduce here
-                            # For now, normalize by local count
-                            routing_avg[k] = stacked.tolist()
-                        else:
-                            continue
-                    else:
-                        # Handle scalar values
-                        routing_avg[k] = routing_sums[k] / cnt
-
-                # Normalize histograms by token count
-                for k in list(routing_avg.keys()):
-                    if "/top1_hist" in k or "/topk_hist" in k:
-                        modality = k.split("/")[0]  # e.g., "action"
-                        token_count_key = f"{modality}/token_count"
-                        if token_count_key in routing_avg and isinstance(routing_avg[k], list):
-                            # Normalize histogram by total tokens
-                            total_tokens = routing_avg[token_count_key]
-                            if total_tokens > 0:
-                                hist = routing_avg[k]
-                                if "/top1_hist" in k:
-                                    # Divide by token count
-                                    routing_avg[k] = [h / total_tokens for h in hist]
-                                elif "/topk_hist" in k:
-                                    # Divide by token_count * top_k
-                                    top_k = getattr(args, "moe_top_k", 2)
-                                    routing_avg[k] = [h / (total_tokens * top_k) for h in hist]
-
-                grad_norm_avg = {}
-                for k in grad_sums:
-                    cnt = grad_counts.get(k, 0)
-                    if cnt > 0:
-                        grad_norm_avg[k] = grad_sums[k] / cnt
-
                 if accelerator.is_main_process:
                     # Get current learning rate
                     current_lr = opt.param_groups[0]['lr']
-                    log_msg = (f"(step={train_steps:07d}) Train Loss image: {avg_loss:.6f}, "
-                               f"Train Loss action:{avg_loss_a:.6f}, Train Loss depth:{avg_loss_d:.6f}, ")
+                    log_msg = (f"(step={train_steps:07d}) Loss: {avg_loss:.6f}")
+                    if args.action_steps > 0:
+                        log_msg += f", Action Loss: {avg_loss_a:.6f}"
+                    if args.use_depth:
+                        log_msg += f", Depth Loss: {avg_loss_d:.6f}"
                     if getattr(args, "use_moe", False):
-                        log_msg += f"MoE aux loss:{avg_moe_aux:.6f}, "
-                        if routing_avg:
-                            if "action_hit_rate" in routing_avg:
-                                log_msg += f"ActionHit:{routing_avg['action_hit_rate']:.3f}, "
-                            if "action_coverage" in routing_avg:
-                                log_msg += f"ActionCov:{routing_avg['action_coverage']:.3f}, "
-                            if "rgb_coverage" in routing_avg:
-                                log_msg += f"RGBCov:{routing_avg['rgb_coverage']:.3f}, "
-                    log_msg += f"Train Steps/Sec: {steps_per_sec:.2f}, LR: {current_lr:.2e}"
-                    # 添加梯度范数信息
-                    if grad_norm_avg:
-                        log_msg += " | GradNorm: "
-                        grad_parts = []
-                        for k in sorted(grad_norm_avg.keys()):
-                            modality = k.split("_")[-1]  # rgb/action/depth/force
-                            grad_parts.append(f"{modality}={grad_norm_avg[k]:.4f}")
-                        log_msg += ", ".join(grad_parts)
+                        log_msg += f", MoE Aux: {avg_moe_aux:.6f}"
+                    log_msg += f", Steps/Sec: {steps_per_sec:.2f}, LR: {current_lr:.2e}"
                     logger.info(log_msg)
+
                     if args.use_wandb:
                         import wandb
                         log_payload = {
-                            "train/loss_image": avg_loss,
+                            "train/loss": avg_loss,
                             "train/steps_per_sec": steps_per_sec,
                             "train/learning_rate": current_lr,
                         }
@@ -949,58 +664,12 @@ def main(args):
                             log_payload["train/loss_depth"] = avg_loss_d
                         if getattr(args, "use_moe", False):
                             log_payload["train/moe_aux_loss"] = avg_moe_aux
-
-                            # Enhanced routing stats with better naming
-                            for k, v in routing_avg.items():
-                                # Skip histograms (handle separately)
-                                if "/top1_hist" in k or "/topk_hist" in k:
-                                    continue
-                                # Use clearer naming convention
-                                if "/" in k:
-                                    parts = k.split("/")
-                                    if len(parts) == 2:
-                                        modality, metric = parts
-                                        log_payload[f"routing/{modality}/{metric}"] = v
-                                else:
-                                    log_payload[f"moe/{k}"] = v
-
-                            # Log histograms separately for plotting
-                            for k, v in routing_avg.items():
-                                if "/top1_hist" in k:
-                                    modality = k.split("/")[0]
-                                    for expert_idx, prob in enumerate(v):
-                                        log_payload[f"routing/{modality}/top1_hist/e{expert_idx}"] = prob
-                                elif "/topk_hist" in k:
-                                    modality = k.split("/")[0]
-                                    for expert_idx, prob in enumerate(v):
-                                        log_payload[f"routing/{modality}/topk_hist/e{expert_idx}"] = prob
-
-                        # Enhanced gradient norm logging with better naming
-                        for k, v in grad_norm_avg.items():
-                            log_payload[f"grad/{k}"] = v
-
-                        # Log gradient decomposition by modality (if tracking enabled)
-                        if GRAD_TRACKER_AVAILABLE and is_grad_tracking_enabled():
-                            grad_summary = get_gradient_summary()
-                            layer_aggregated = get_layer_aggregated()
-                            # Add all gradient decomposition data to wandb
-                            log_payload.update(grad_summary)
-                            # Also add aggregated (across layers) stats
-                            for k, v in layer_aggregated.items():
-                                log_payload[f"grad_by_modality/aggregated/{k}"] = v
-                            # Clear after logging
-                            clear_gradients()
-
                         wandb.log(log_payload, step=train_steps)
 
                 running_loss = 0.0
                 running_loss_a = 0.0
                 running_loss_d = 0.0
                 running_moe_aux = 0.0
-                routing_sums = {}
-                routing_counts = {}
-                grad_sums = {}
-                grad_counts = {}
                 log_steps = 0
                 start_time = time()
 

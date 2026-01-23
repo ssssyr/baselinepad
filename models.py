@@ -742,47 +742,12 @@ class DiT(nn.Module):
         return torch.stack(aux_values).sum()
 
     def get_last_routing_stats(self):
-        """
-        Aggregate lightweight routing stats (e.g., action hit rate/coverage) across MoE blocks.
-        Returns a dict of averaged metrics or None if MoE is disabled or stats are unavailable.
-        """
-        if not self.use_moe:
-            return None
-        sums = {}
-        counts = {}
-        for block in self.blocks:
-            stats = getattr(block, "last_routing_stats", None)
-            if not stats:
-                continue
-            for key, val in stats.items():
-                # Skip tensor values (histograms, etc.) - these are handled separately in train_robot.py
-                if isinstance(val, torch.Tensor):
-                    continue
-                # Only process scalar values (int, float, or single-element tensors converted to float)
-                try:
-                    scalar_val = float(val)
-                    sums[key] = sums.get(key, 0.0) + scalar_val
-                    counts[key] = counts.get(key, 0) + 1
-                except (ValueError, TypeError):
-                    # Skip values that can't be converted to scalar
-                    continue
-        if not sums:
-            return None
-        return {k: sums[k] / counts[k] for k in sums}
+        """Disabled for simplified open-source version."""
+        return None
 
     def get_last_gate_scores(self):
-        """
-        Aggregate gate scores (logits before/after bias) across MoE blocks.
-        Returns a list of dicts with keys: 'logits', 'logits_before_bias', 'modality_ids'
-        """
-        if not self.use_moe:
-            return None
-        gate_scores = []
-        for block in self.blocks:
-            scores = getattr(block, "last_gate_scores", None)
-            if scores is not None:
-                gate_scores.append(scores)
-        return gate_scores if gate_scores else None
+        """Disabled for simplified open-source version."""
+        return None
 
 
 #################################################################################
