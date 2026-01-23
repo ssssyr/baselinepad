@@ -1,18 +1,11 @@
 
 
 
-
-
 import torch as th
 import numpy as np
 
 
 def normal_kl(mean1, logvar1, mean2, logvar2):
-    """
-    Compute the KL divergence between two gaussians.
-    Shapes are automatically broadcasted, so batches can be compared to
-    scalars, among other use cases.
-    """
     tensor = None
     for obj in (mean1, logvar1, mean2, logvar2):
         if isinstance(obj, th.Tensor):
@@ -20,8 +13,8 @@ def normal_kl(mean1, logvar1, mean2, logvar2):
             break
     assert tensor is not None, "at least one argument must be a Tensor"
 
-    
-    
+
+
     logvar1, logvar2 = [
         x if isinstance(x, th.Tensor) else th.tensor(x).to(tensor)
         for x in (logvar1, logvar2)
@@ -37,21 +30,10 @@ def normal_kl(mean1, logvar1, mean2, logvar2):
 
 
 def approx_standard_normal_cdf(x):
-    """
-    A fast approximation of the cumulative distribution function of the
-    standard normal.
-    """
     return 0.5 * (1.0 + th.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * th.pow(x, 3))))
 
 
 def continuous_gaussian_log_likelihood(x, *, means, log_scales):
-    """
-    Compute the log-likelihood of a continuous Gaussian distribution.
-    :param x: the targets
-    :param means: the Gaussian mean Tensor.
-    :param log_scales: the Gaussian log stddev Tensor.
-    :return: a tensor like x of log probabilities (in nats).
-    """
     centered_x = x - means
     inv_stdv = th.exp(-log_scales)
     normalized_x = centered_x * inv_stdv
@@ -60,15 +42,6 @@ def continuous_gaussian_log_likelihood(x, *, means, log_scales):
 
 
 def discretized_gaussian_log_likelihood(x, *, means, log_scales):
-    """
-    Compute the log-likelihood of a Gaussian distribution discretizing to a
-    given image.
-    :param x: the target images. It is assumed that this was uint8 values,
-              rescaled to the range [-1, 1].
-    :param means: the Gaussian mean Tensor.
-    :param log_scales: the Gaussian log stddev Tensor.
-    :return: a tensor like x of log probabilities (in nats).
-    """
     assert x.shape == means.shape == log_scales.shape
     centered_x = x - means
     inv_stdv = th.exp(-log_scales)
