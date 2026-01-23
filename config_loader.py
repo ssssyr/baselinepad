@@ -83,7 +83,7 @@ class ConfigLoader:
         return argparse.Namespace(**merged_dict)
 
 
-def load_config(config_file: str = "default.yaml", 
+def load_config(config_file: str = "finetune.yaml", 
                 config_dir: str = "configs",
                 args: Optional[argparse.Namespace] = None) -> argparse.Namespace:
     """

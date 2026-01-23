@@ -824,8 +824,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train DiT model with config file support")
 
     
-    parser.add_argument("--config", type=str, default="default.yaml",
-                        help="Path to YAML config file (default: configs/default.yaml)")
+    parser.add_argument("--config", type=str, default="finetune.yaml",
+                        help="Path to YAML config file (default: configs/finetune.yaml)")
 
     
     parser.add_argument("--feature-path", type=str)
@@ -922,7 +922,7 @@ if __name__ == "__main__":
     except FileNotFoundError:
         print(f"⚠ Config file not found: configs/{cli_args.config}")
         print("Using default configuration...")
-        args = load_config("default.yaml", "configs")
+        args = load_config("finetune.yaml", "configs")
     except Exception as e:
         print(f"✗ Error loading config: {e}")
         print("Falling back to command line arguments only...")
